@@ -1418,8 +1418,11 @@ test('resolveNow finds the block containing the current minute', () => {
 });
 
 test('a block is inclusive of its start and exclusive of its end', () => {
-  assert.equal(resolveNow('thu', 405).state, 'now');   // exactly 6:45
-  assert.equal(resolveNow('thu', 465).state, 'next');  // exactly 7:45, block is over
+  // 6:45 exactly: study has begun.
+  assert.equal(resolveNow('thu', 405).block.lane, 'study');
+  // 7:45 exactly: study is over and breakfast has begun, back to back.
+  assert.equal(resolveNow('thu', 465).state, 'now');
+  assert.notEqual(resolveNow('thu', 465).block.lane, 'study');
 });
 
 test('a gap reports the next block rather than nothing', () => {
