@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Weekly Innings — Schedule &amp; Progress Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --pitch:#16352A; --pitch-2:#1E4636; --chalk:#F3EEDD; --amber:#F5B841;
+  --ball:#C4452D; --ink:#0C201A; --muted:#9DB4A8; --green:#3F8A5F;
+  --line:rgba(243,238,221,.16);
+  --mono:'IBM Plex Mono',monospace; --disp:'Bricolage Grotesque',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:var(--pitch); color:var(--chalk); font-family:var(--disp);
+  line-height:1.55;
+  background-image:repeating-linear-gradient(90deg,transparent 0 120px,rgba(255,255,255,.018) 120px 240px);
+}
+.wrap{max-width:980px;margin:0 auto;padding:0 20px}
+button{font-family:inherit}
+
+/* ===== HERO ===== */
+header{border-bottom:2px solid var(--line);padding:44px 0 36px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
+.eyebrow b{color:var(--ball)}
+h1{font-size:clamp(2.2rem,7vw,4.2rem);font-weight:800;line-height:.98;letter-spacing:-.02em;text-transform:uppercase}
+h1 .thin{font-weight:400;color:var(--muted)}
+.sub{margin-top:14px;max-width:560px;color:var(--muted)}
+.board{margin-top:34px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.plate{background:var(--ink);border:1px solid var(--line);border-radius:6px;padding:16px 12px 14px;text-align:center;position:relative;box-shadow:0 8px 0 -4px rgba(0,0,0,.35)}
+.plate::before,.plate::after{content:"";position:absolute;top:-7px;width:8px;height:8px;border:2px solid var(--muted);border-radius:50%;background:var(--pitch)}
+.plate::before{left:16px}.plate::after{right:16px}
+.plate .num{font-family:var(--mono);font-weight:700;font-size:clamp(1.7rem,5vw,2.5rem);color:var(--amber);line-height:1}
+.plate .cap{margin-top:7px;font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+
+/* ===== TODAY'S SCORECARD ===== */
+.scorecard{margin-top:36px;background:var(--ink);border:1px solid var(--line);border-radius:10px;padding:22px}
+.sc-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.sc-head h2{font-size:1.15rem;font-weight:800;text-transform:uppercase;letter-spacing:.02em}
+.sc-head .date{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.sc-head .date button{background:none;border:none;color:var(--amber);cursor:pointer;font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;text-decoration:underline;padding:0;margin-left:8px}
+.ticks{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.tick{
+  display:flex;align-items:center;gap:12px;
+  background:var(--pitch);border:1px solid var(--line);border-radius:8px;
+  padding:14px;cursor:pointer;transition:border-color .15s;text-align:left;color:var(--chalk);
+}
+.tick:hover{border-color:var(--muted)}
+.tick:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.box{
+  width:26px;height:26px;flex:none;border-radius:6px;border:2px solid var(--muted);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:16px;color:var(--ink);transition:all .15s;
+}
+.tick.done .box{background:var(--amber);border-color:var(--amber)}
+.tick .lbl b{display:block;font-weight:600;font-size:.95rem}
+.tick .lbl em{font-style:normal;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tick.done .lbl b{color:var(--amber)}
+.streak{margin-top:14px;font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.streak b{color:var(--ball);font-size:15px}
+.storage-note{margin-top:8px;font-family:var(--mono);font-size:10.5px;color:var(--ball);display:none}
+
+/* ===== LEGEND ===== */
+.legend{display:flex;flex-wrap:wrap;gap:10px 22px;padding:22px 0;border-bottom:2px solid var(--line);font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:8px}
+.dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+.d-study{background:var(--amber)}.d-work{background:#587163}.d-fit{background:var(--ball)}.d-cricket{background:var(--green)}.d-rest{background:var(--chalk)}
+
+/* ===== TABS & PANELS ===== */
+.days{padding:34px 0 8px}
+.tabs{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:26px}
+.tab{font-family:var(--mono);font-size:13px;letter-spacing:.1em;text-transform:uppercase;padding:12px 4px;background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:6px;cursor:pointer;transition:all .15s}
+.tab:hover{color:var(--chalk);border-color:var(--muted)}
+.tab:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.tab.on{background:var(--amber);color:var(--ink);border-color:var(--amber);font-weight:700}
+.tab .full{display:inline}.tab .short{display:none}
+.panel{display:none;animation:rise .25s ease}
+.panel.on{display:block}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.day-head{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.day-head h2{font-size:clamp(1.5rem,4vw,2.1rem);font-weight:800;text-transform:uppercase}
+.day-head .tag{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ball)}
+.day-note{color:var(--muted);margin-bottom:22px;max-width:640px;font-size:.98rem}
+.row{display:grid;grid-template-columns:118px 14px 1fr;gap:0 16px;padding:13px 0;border-bottom:1px dashed var(--line);align-items:start}
+.row:last-child{border-bottom:none}
+.row .time{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--muted);padding-top:2px;white-space:nowrap}
+.row .bar{width:14px;border-radius:4px;align-self:stretch}
+.b-study{background:var(--amber)}.b-work{background:#587163}.b-fit{background:var(--ball)}.b-cricket{background:var(--green)}.b-rest{background:var(--chalk)}
+.row .what strong{display:block;font-weight:600;font-size:1.02rem}
+.row .what em{display:block;font-style:normal;color:var(--muted);font-size:.9rem;margin-top:2px}
+.effort{display:inline-block;margin-left:8px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--line);border-radius:20px;padding:2px 8px;color:var(--muted);vertical-align:2px}
+.effort.hard{border-color:var(--ball);color:var(--ball)}
+.effort.easy{border-color:var(--green);color:#7BC49A}
+.subj{display:inline-block;margin-left:8px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;background:var(--amber);color:var(--ink);border-radius:20px;padding:2px 9px;font-weight:700;vertical-align:2px}
+
+/* ===== MONTH CALENDAR ===== */
+.month{margin:48px 0 0;border-top:2px solid var(--line);padding:40px 0 8px}
+.month h3{font-size:clamp(1.3rem,3.5vw,1.8rem);font-weight:800;text-transform:uppercase;margin-bottom:6px}
+.month h3 span{color:var(--ball)}
+.month .hint{color:var(--muted);font-size:.93rem;margin-bottom:22px;max-width:620px}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.cal-nav .mname{font-family:var(--mono);font-size:14px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--amber)}
+.cal-nav button{background:var(--ink);border:1px solid var(--line);color:var(--chalk);border-radius:6px;padding:8px 14px;cursor:pointer;font-family:var(--mono);font-size:13px}
+.cal-nav button:hover{border-color:var(--muted)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.cal-dow{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:center;padding-bottom:6px}
+.cell{
+  aspect-ratio:1;background:var(--ink);border:1px solid var(--line);border-radius:6px;
+  padding:6px;cursor:pointer;position:relative;transition:border-color .15s;
+  display:flex;flex-direction:column;justify-content:space-between;
+}
+.cell:hover{border-color:var(--muted)}
+.cell.blank{background:transparent;border-color:transparent;cursor:default}
+.cell .dnum{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.cell.today{border-color:var(--amber)}
+.cell.today .dnum{color:var(--amber);font-weight:700}
+.cell.sel{outline:2px solid var(--ball);outline-offset:1px}
+.pips{display:flex;gap:3px}
+.pip{width:6px;height:6px;border-radius:50%}
+.p-s{background:var(--amber)}.p-w{background:var(--ball)}.p-z{background:var(--chalk)}
+.cell.full{background:var(--green);border-color:var(--green)}
+.cell.full .dnum{color:var(--ink);font-weight:700}
+.cell.full .pip{background:var(--ink)}
+.cal-stats{margin-top:16px;font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;gap:26px;flex-wrap:wrap}
+.cal-stats b{color:var(--amber)}
+
+/* ===== RULES / FOOTER ===== */
+.rules{margin:48px 0 0;border-top:2px solid var(--line);padding:40px 0 8px}
+.rules h3{font-size:clamp(1.3rem,3.5vw,1.8rem);font-weight:800;text-transform:uppercase;margin-bottom:24px}
+.rules h3 span{color:var(--ball)}
+.rule-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px 32px}
+.rule{border-left:3px solid var(--amber);padding-left:14px}
+.rule b{display:block;font-weight:600;margin-bottom:4px}
+.rule p{color:var(--muted);font-size:.93rem}
+.rule.red{border-color:var(--ball)}
+footer{margin-top:56px;border-top:2px solid var(--line);padding:26px 0 40px;font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+
+@media (max-width:720px){
+  .board{grid-template-columns:repeat(2,1fr)}
+  .ticks{grid-template-columns:1fr}
+  .rule-grid{grid-template-columns:1fr}
+  .tab{padding:10px 2px;font-size:11px}
+  .tab .full{display:none}.tab .short{display:inline}
+  .row{grid-template-columns:86px 10px 1fr;gap:0 12px}
+  .row .time{font-size:11.5px}
+  .cell{padding:4px}.cell .dnum{font-size:9.5px}
+  .pip{width:5px;height:5px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow">Season 2026 · Pune <b>●</b> Work × BITS WILP AI&nbsp;ML × Cricket</div>
+    <h1>The Weekly<br>Innings <span class="thin">— one over at a time</span></h1>
+    <p class="sub">Four subjects, seven workouts, two matches, one sustainable week. Tick your scorecard daily — the calendar keeps the running total.</p>
+
+    <div class="board" aria-label="Weekly totals scoreboard">
+      <div class="plate"><div class="num">4</div><div class="cap">Subjects in play</div></div>
+      <div class="plate"><div class="num">8+</div><div class="cap">Study hrs / wk</div></div>
+      <div class="plate"><div class="num">7</div><div class="cap">Workout days</div></div>
+      <div class="plate"><div class="num">7.5</div><div class="cap">Sleep hrs / night</div></div>
+    </div>
+
+    <!-- Daily scorecard -->
+    <div class="scorecard">
+      <div class="sc-head">
+        <h2>Today's scorecard</h2>
+        <div class="date"><span id="scDate"></span><button id="backToday" style="display:none">back to today</button></div>
+      </div>
+      <div class="ticks">
+        <button class="tick" id="t-s"><span class="box">✓</span><span class="lbl"><b>Study hour done</b><em>Morning block · subject of the day</em></span></button>
+        <button class="tick" id="t-w"><span class="box">✓</span><span class="lbl"><b>Workout done</b><em>Walk · run · home workout · match</em></span></button>
+        <button class="tick" id="t-z"><span class="box">✓</span><span class="lbl"><b>Slept by 11</b><em>The rule that makes the rest work</em></span></button>
+      </div>
+      <div class="streak">Current streak (study + workout): <b id="streak">0</b> days <span id="saveStatus" style="margin-left:14px;font-size:10.5px;color:var(--muted)"></span></div>
+      <div class="storage-note" id="storageNote">Progress can't be saved in this view — ticks will reset when you close the page.</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="legend">
+    <span><i class="dot d-study"></i>Study</span>
+    <span><i class="dot d-work"></i>Work</span>
+    <span><i class="dot d-fit"></i>Workout</span>
+    <span><i class="dot d-cricket"></i>Cricket</span>
+    <span><i class="dot d-rest"></i>Rest &amp; free</span>
+  </div>
+
+  <section class="days">
+    <div class="tabs" role="tablist" aria-label="Days of the week">
+      <button class="tab" role="tab" data-d="mon"><span class="full">Mon</span><span class="short">M</span></button>
+      <button class="tab" role="tab" data-d="tue"><span class="full">Tue</span><span class="short">T</span></button>
+      <button class="tab" role="tab" data-d="wed"><span class="full">Wed</span><span class="short">W</span></button>
+      <button class="tab" role="tab" data-d="thu"><span class="full">Thu</span><span class="short">T</span></button>
+      <button class="tab" role="tab" data-d="fri"><span class="full">Fri</span><span class="short">F</span></button>
+      <button class="tab" role="tab" data-d="sat"><span class="full">Sat</span><span class="short">S</span></button>
+      <button class="tab" role="tab" data-d="sun"><span class="full">Sun</span><span class="short">S</span></button>
+    </div>
+
+    <!-- MONDAY -->
+    <div class="panel" id="p-mon" role="tabpanel">
+      <div class="day-head"><h2>Monday</h2><span class="tag">Consolidation day</span></div>
+      <p class="day-note">Replay the weekend's lectures across all four subjects while they're fresh. Decide which topics Tue–Fri mornings will cover.</p>
+      <div class="row"><div class="time">6:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up</strong><em>No phone for the first 15 minutes</em></div></div>
+      <div class="row"><div class="time">6:45 – 7:45</div><div class="bar b-study"></div><div class="what"><strong>Study — weekend review<span class="subj">All subjects</span></strong><em>Consolidate Sat/Sun classes · plan the week's topics</em></div></div>
+      <div class="row"><div class="time">7:45 – 8:45</div><div class="bar b-rest"></div><div class="what"><strong>Breakfast &amp; get ready</strong></div></div>
+      <div class="row"><div class="time">9:30 – 6:30</div><div class="bar b-work"></div><div class="what"><strong>Work</strong><em>Truworth Wellness</em></div></div>
+      <div class="row"><div class="time">7:15 – 8:15</div><div class="bar b-fit"></div><div class="what"><strong>Home workout — full body<span class="effort hard">Hard</span></strong><em>Push-ups, squats, lunges, plank circuit · 3–4 rounds</em></div></div>
+      <div class="row"><div class="time">8:15 – 9:15</div><div class="bar b-rest"></div><div class="what"><strong>Shower &amp; dinner</strong></div></div>
+      <div class="row"><div class="time">9:15 – 10:15</div><div class="bar b-rest"></div><div class="what"><strong>Free time</strong><em>Genuinely free — no guilt</em></div></div>
+      <div class="row"><div class="time">11:00</div><div class="bar b-rest"></div><div class="what"><strong>Lights out</strong></div></div>
+    </div>
+
+    <!-- TUESDAY -->
+    <div class="panel" id="p-tue" role="tabpanel">
+      <div class="day-head"><h2>Tuesday</h2><span class="tag">Maths morning</span></div>
+      <p class="day-note">Maths Foundation gets the freshest brain of the week — everything in ML and DL stands on it. The evening walk keeps the body moving while it recovers from Monday.</p>
+      <div class="row"><div class="time">6:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up</strong></div></div>
+      <div class="row"><div class="time">6:45 – 7:45</div><div class="bar b-study"></div><div class="what"><strong>Study<span class="subj">Maths Foundation for ML</span></strong><em>Linear algebra, calculus, optimisation · work problems by hand</em></div></div>
+      <div class="row"><div class="time">7:45 – 8:45</div><div class="bar b-rest"></div><div class="what"><strong>Breakfast &amp; get ready</strong></div></div>
+      <div class="row"><div class="time">9:30 – 6:30</div><div class="bar b-work"></div><div class="what"><strong>Work</strong></div></div>
+      <div class="row"><div class="time">7:15 – 8:15</div><div class="bar b-fit"></div><div class="what"><strong>Brisk walk — 60 min<span class="effort easy">Easy</span></strong><em>Recovery pace · podcast or lecture audio if you like</em></div></div>
+      <div class="row"><div class="time">8:15 – 9:15</div><div class="bar b-rest"></div><div class="what"><strong>Shower &amp; dinner</strong></div></div>
+      <div class="row"><div class="time">9:15 – 10:15</div><div class="bar b-rest"></div><div class="what"><strong>Free time</strong></div></div>
+      <div class="row"><div class="time">11:00</div><div class="bar b-rest"></div><div class="what"><strong>Lights out</strong></div></div>
+    </div>
+
+    <!-- WEDNESDAY -->
+    <div class="panel" id="p-wed" role="tabpanel">
+      <div class="day-head"><h2>Wednesday</h2><span class="tag">Mid-week double</span></div>
+      <p class="day-note">Machine Learning in the morning, a run in the evening, then one light study hour — the only weekday with two study blocks, so the run stays moderate.</p>
+      <div class="row"><div class="time">6:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up</strong></div></div>
+      <div class="row"><div class="time">6:45 – 7:45</div><div class="bar b-study"></div><div class="what"><strong>Study<span class="subj">Machine Learning</span></strong><em>Algorithms &amp; theory · connect back to Tuesday's maths</em></div></div>
+      <div class="row"><div class="time">7:45 – 8:45</div><div class="bar b-rest"></div><div class="what"><strong>Breakfast &amp; get ready</strong></div></div>
+      <div class="row"><div class="time">9:30 – 6:30</div><div class="bar b-work"></div><div class="what"><strong>Work</strong></div></div>
+      <div class="row"><div class="time">7:15 – 8:15</div><div class="bar b-fit"></div><div class="what"><strong>Run — 40–50 min<span class="effort">Moderate</span></strong><em>Steady pace, or easy intervals · finish able to talk</em></div></div>
+      <div class="row"><div class="time">8:15 – 9:15</div><div class="bar b-rest"></div><div class="what"><strong>Shower &amp; dinner</strong></div></div>
+      <div class="row"><div class="time">9:15 – 10:15</div><div class="bar b-study"></div><div class="what"><strong>Study — light hour<span class="subj">Weakest subject</span></strong><em>Lecture videos &amp; notes only — no heavy problem-solving at night</em></div></div>
+      <div class="row"><div class="time">11:00</div><div class="bar b-rest"></div><div class="what"><strong>Lights out</strong></div></div>
+    </div>
+
+    <!-- THURSDAY -->
+    <div class="panel" id="p-thu" role="tabpanel">
+      <div class="day-head"><h2>Thursday</h2><span class="tag">Power play</span></div>
+      <p class="day-note">Deep Learning builds directly on Tuesday's maths and Wednesday's ML — that's why it sits here. Last hard workout of the week; the load tapers from tomorrow.</p>
+      <div class="row"><div class="time">6:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up</strong></div></div>
+      <div class="row"><div class="time">6:45 – 7:45</div><div class="bar b-study"></div><div class="what"><strong>Study<span class="subj">Deep Learning</span></strong><em>Theory + code · implement small pieces in Python</em></div></div>
+      <div class="row"><div class="time">7:45 – 8:45</div><div class="bar b-rest"></div><div class="what"><strong>Breakfast &amp; get ready</strong></div></div>
+      <div class="row"><div class="time">9:30 – 6:30</div><div class="bar b-work"></div><div class="what"><strong>Work</strong></div></div>
+      <div class="row"><div class="time">7:15 – 8:15</div><div class="bar b-fit"></div><div class="what"><strong>Home workout — strength &amp; core<span class="effort hard">Hard</span></strong><em>Push-up variations, split squats, core circuit</em></div></div>
+      <div class="row"><div class="time">8:15 – 9:15</div><div class="bar b-rest"></div><div class="what"><strong>Shower &amp; dinner</strong></div></div>
+      <div class="row"><div class="time">9:15 – 10:15</div><div class="bar b-rest"></div><div class="what"><strong>Free time</strong></div></div>
+      <div class="row"><div class="time">11:00</div><div class="bar b-rest"></div><div class="what"><strong>Lights out</strong></div></div>
+    </div>
+
+    <!-- FRIDAY -->
+    <div class="panel" id="p-fri" role="tabpanel">
+      <div class="day-head"><h2>Friday</h2><span class="tag">Taper &amp; recover</span></div>
+      <p class="day-note">Statistical Methods closes the study week. Easy walk plus stretching in the evening — you want loose hamstrings, not sore ones, for tomorrow's match.</p>
+      <div class="row"><div class="time">6:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up</strong></div></div>
+      <div class="row"><div class="time">6:45 – 7:45</div><div class="bar b-study"></div><div class="what"><strong>Study<span class="subj">Statistical Methods</span></strong><em>Distributions, inference, hypothesis testing · flag doubts for weekend classes</em></div></div>
+      <div class="row"><div class="time">7:45 – 8:45</div><div class="bar b-rest"></div><div class="what"><strong>Breakfast &amp; get ready</strong></div></div>
+      <div class="row"><div class="time">9:30 – 6:30</div><div class="bar b-work"></div><div class="what"><strong>Work</strong></div></div>
+      <div class="row"><div class="time">7:15 – 8:15</div><div class="bar b-fit"></div><div class="what"><strong>Easy walk + full stretch<span class="effort easy">Very easy</span></strong><em>30 min walk · 20 min hips, hamstrings, shoulders</em></div></div>
+      <div class="row"><div class="time">8:15 onwards</div><div class="bar b-rest"></div><div class="what"><strong>Free evening</strong><em>Fully unclaimed — this is the slack in the system</em></div></div>
+      <div class="row"><div class="time">11:00</div><div class="bar b-rest"></div><div class="what"><strong>Lights out</strong><em>Match tomorrow — protect the sleep</em></div></div>
+    </div>
+
+    <!-- SATURDAY -->
+    <div class="panel" id="p-sat" role="tabpanel">
+      <div class="day-head"><h2>Saturday</h2><span class="tag">Match day · Class day</span></div>
+      <p class="day-note">Classes in the morning, cricket in the evening. The nap in between is not optional — it's what makes both halves work.</p>
+      <div class="row"><div class="time">7:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up — slightly later</strong><em>Optional 20 min mobility to loosen up</em></div></div>
+      <div class="row"><div class="time">Morning</div><div class="bar b-study"></div><div class="what"><strong>BITS WILP contact classes<span class="subj">Per timetable</span></strong><em>Attend live · ask the doubts flagged on Friday</em></div></div>
+      <div class="row"><div class="time">1:00 – 2:00</div><div class="bar b-rest"></div><div class="what"><strong>Lunch</strong><em>Proper meal + hydrate — you'll sweat it out at 3:30</em></div></div>
+      <div class="row"><div class="time">2:00 – 3:00</div><div class="bar b-rest"></div><div class="what"><strong>Nap</strong></div></div>
+      <div class="row"><div class="time">3:30 – 7:30</div><div class="bar b-cricket"></div><div class="what"><strong>Cricket match<span class="effort hard">Match</span></strong><em>This is the workout — tick it on the scorecard</em></div></div>
+      <div class="row"><div class="time">8:00 – 9:00</div><div class="bar b-rest"></div><div class="what"><strong>Dinner &amp; wind down</strong></div></div>
+      <div class="row"><div class="time">Evening</div><div class="bar b-rest"></div><div class="what"><strong>Completely free</strong><em>No study, no assignments, no guilt</em></div></div>
+      <div class="row"><div class="time">11:00</div><div class="bar b-rest"></div><div class="what"><strong>Lights out</strong></div></div>
+    </div>
+
+    <!-- SUNDAY -->
+    <div class="panel" id="p-sun" role="tabpanel">
+      <div class="day-head"><h2>Sunday</h2><span class="tag">Match day · Assignments</span></div>
+      <p class="day-note">Class or assignments in the morning — rotate the assignment subject by whatever's due next. The day ends when the match ends.</p>
+      <div class="row"><div class="time">7:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up</strong></div></div>
+      <div class="row"><div class="time">Morning</div><div class="bar b-study"></div><div class="what"><strong>Class — or assignment block (2 hrs)<span class="subj">Rotating</span></strong><em>Whichever subject has the nearest deadline</em></div></div>
+      <div class="row"><div class="time">1:00 – 2:00</div><div class="bar b-rest"></div><div class="what"><strong>Lunch</strong></div></div>
+      <div class="row"><div class="time">2:00 – 3:00</div><div class="bar b-rest"></div><div class="what"><strong>Nap</strong></div></div>
+      <div class="row"><div class="time">3:30 – 7:30</div><div class="bar b-cricket"></div><div class="what"><strong>Cricket match<span class="effort hard">Match</span></strong></div></div>
+      <div class="row"><div class="time">8:00 – 9:00</div><div class="bar b-rest"></div><div class="what"><strong>Dinner &amp; recovery</strong><em>Stretch 10 min · big glass of water</em></div></div>
+      <div class="row"><div class="time">9:00 – 10:30</div><div class="bar b-rest"></div><div class="what"><strong>Wind down</strong><em>Lay out Monday: notes, workout clothes, breakfast plan</em></div></div>
+      <div class="row"><div class="time">10:30</div><div class="bar b-rest"></div><div class="what"><strong>Lights out — earlier tonight</strong><em>The week starts at 6:30 sharp</em></div></div>
+    </div>
+  </section>
+
+  <!-- MONTH CALENDAR -->
+  <section class="month">
+    <h3>The season board <span>— month at a glance</span></h3>
+    <p class="hint">Each day shows three pips: <b style="color:var(--amber)">study</b>, <b style="color:var(--ball)">workout</b>, <b style="color:var(--chalk)">sleep</b>. Complete all three and the day turns green. Tap any past day to edit its scorecard.</p>
+    <div class="cal-nav">
+      <button id="prevM" aria-label="Previous month">‹ Prev</button>
+      <div class="mname" id="mName"></div>
+      <button id="nextM" aria-label="Next month">Next ›</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-stats">
+      <span>Green days this month: <b id="stFull">0</b></span>
+      <span>Study days: <b id="stS">0</b></span>
+      <span>Workout days: <b id="stW">0</b></span>
+    </div>
+  </section>
+
+  <!-- RULES -->
+  <section class="rules">
+    <h3>Match rules <span>— why this holds up</span></h3>
+    <div class="rule-grid">
+      <div class="rule"><b>One subject per morning</b><p>Maths Tue, ML Wed, DL Thu, Stats Fri. Depth beats juggling — and the order follows the dependency chain: maths feeds ML, ML feeds DL.</p></div>
+      <div class="rule"><b>Intensity waves, not flat effort</b><p>Hard Mon &amp; Thu (home workouts), easy Tue &amp; Fri (walks), moderate Wed (run). Daily movement works only because the effort rises and falls.</p></div>
+      <div class="rule red"><b>Friday tapers into the weekend</b><p>Walk and stretch on Friday, matches Sat–Sun. Eight hours of cricket is the real training load — the week is built around it.</p></div>
+      <div class="rule"><b>Mornings are for the hard subjects</b><p>One fresh hour at 6:45 beats three exhausted hours at 10 PM. AI &amp; ML is cumulative — the maths must be understood, not memorised.</p></div>
+      <div class="rule red"><b>Don't break the chain — but never twice</b><p>Missing one day is a rain delay, not a lost season. The rule: never miss two days in a row. That single rule protects every streak.</p></div>
+      <div class="rule"><b>Sleep is the umpire</b><p>7.5 hours, non-negotiable. If soreness lingers past two days or match performance dips, swap a hard day for a walk — don't drop the habit.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Weekdays: 5 study hrs · Wed +1 · Sun +2 ≈ 8 hrs self-study / week</span>
+    <span>Fix wake-up + morning study first · add the rest after two weeks</span>
+  </footer>
+</div>
+
+<script>
+/* ---------- day tabs ---------- */
+const tabs=document.querySelectorAll('.tab'),panels=document.querySelectorAll('.panel');
+function showDay(d){
+  tabs.forEach(t=>{const on=t.dataset.d===d;t.classList.toggle('on',on);t.setAttribute('aria-selected',on)});
+  panels.forEach(p=>p.classList.toggle('on',p.id==='p-'+d));
+}
+tabs.forEach(t=>t.addEventListener('click',()=>showDay(t.dataset.d)));
+showDay(['sun','mon','tue','wed','thu','fri','sat'][new Date().getDay()]);
+
+/* ---------- progress store ---------- */
+const KEY='weekly-innings-progress';
+let progress={};           /* {"2026-08-20":{s:1,w:1,z:1}} */
+let memoryOnly=false;
+const hasStore=typeof window.storage!=='undefined'&&window.storage&&typeof window.storage.get==='function';
+
+async function loadProgress(attempt=1){
+  if(!hasStore){memoryOnly=true;document.getElementById('storageNote').style.display='block';return}
+  try{
+    const r=await window.storage.get(KEY);
+    if(r&&r.value)progress=JSON.parse(r.value);
+  }catch(e){
+    /* A missing key also throws — only retry on what looks like a
+       server error, so a fresh start doesn't loop forever. */
+    const msg=String(e&&e.message||e);
+    if(attempt<3&&/server|internal|network|timeout/i.test(msg)){
+      await new Promise(res=>setTimeout(res,1200*attempt));
+      return loadProgress(attempt+1);
+    }
+  }
+}
+/* Debounced save with automatic retry — the storage backend can
+   occasionally return a transient server error, so we retry with
+   backoff and show status instead of silently dropping the tick. */
+const saveStatus=document.getElementById('saveStatus');
+let saveTimer=null,retries=0;
+function setStatus(txt,color){saveStatus.textContent=txt;saveStatus.style.color=color||'var(--muted)'}
+
+function saveProgress(){           /* callers don't need to await */
+  if(memoryOnly)return;
+  clearTimeout(saveTimer);
+  setStatus('saving…');
+  saveTimer=setTimeout(doSave,600); /* coalesce rapid ticks into one write */
+}
+async function doSave(){
+  try{
+    const r=await window.storage.set(KEY,JSON.stringify(progress));
+    if(!r)throw new Error('empty result');
+    retries=0;
+    setStatus('✓ saved','#7BC49A');
+    setTimeout(()=>{if(saveStatus.textContent==='✓ saved')setStatus('')},2500);
+  }catch(e){
+    if(retries<4){
+      retries++;
+      const wait=1000*Math.pow(2,retries-1);   /* 1s, 2s, 4s, 8s */
+      setStatus('retrying save ('+retries+'/4)…','var(--amber)');
+      saveTimer=setTimeout(doSave,wait);
+    }else{
+      retries=0;
+      setStatus('⚠ not saved — tap any tick to retry','var(--ball)');
+    }
+  }
+}
+/* if a save is still pending when the page is left, try once more */
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden'&&saveTimer){clearTimeout(saveTimer);doSave()}
+});
+
+/* ---------- dates ---------- */
+const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const todayISO=()=>iso(new Date());
+let selDate=todayISO();
+
+/* ---------- scorecard ---------- */
+const ticks={s:document.getElementById('t-s'),w:document.getElementById('t-w'),z:document.getElementById('t-z')};
+const scDate=document.getElementById('scDate'),backBtn=document.getElementById('backToday');
+
+function renderScorecard(){
+  const rec=progress[selDate]||{};
+  Object.entries(ticks).forEach(([k,el])=>el.classList.toggle('done',!!rec[k]));
+  const d=new Date(selDate+'T00:00:00');
+  const isToday=selDate===todayISO();
+  scDate.textContent=(isToday?'Today · ':'')+d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+  backBtn.style.display=isToday?'none':'inline';
+  renderStreak();
+}
+Object.entries(ticks).forEach(([k,el])=>{
+  el.addEventListener('click',async()=>{
+    const rec=progress[selDate]||(progress[selDate]={});
+    rec[k]=rec[k]?0:1;
+    renderScorecard();renderCalendar();
+    saveProgress();
+  });
+});
+backBtn.addEventListener('click',()=>{selDate=todayISO();renderScorecard();renderCalendar()});
+
+function renderStreak(){
+  let n=0,d=new Date();
+  /* today counts if already complete; otherwise start from yesterday */
+  const t=progress[iso(d)];
+  if(!(t&&t.s&&t.w))d.setDate(d.getDate()-1);
+  while(true){
+    const r=progress[iso(d)];
+    if(r&&r.s&&r.w){n++;d.setDate(d.getDate()-1)}else break;
+  }
+  document.getElementById('streak').textContent=n;
+}
+
+/* ---------- calendar ---------- */
+let calY,calM;
+{const n=new Date();calY=n.getFullYear();calM=n.getMonth()}
+const grid=document.getElementById('calGrid'),mName=document.getElementById('mName');
+
+function renderCalendar(){
+  mName.textContent=new Date(calY,calM,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+  grid.innerHTML='';
+  ['S','M','T','W','T','F','S'].forEach(d=>{
+    const h=document.createElement('div');h.className='cal-dow';h.textContent=d;grid.appendChild(h);
+  });
+  const first=new Date(calY,calM,1).getDay();
+  const days=new Date(calY,calM+1,0).getDate();
+  for(let i=0;i<first;i++){const c=document.createElement('div');c.className='cell blank';grid.appendChild(c)}
+  let cS=0,cW=0,cF=0;
+  const tISO=todayISO();
+  for(let d=1;d<=days;d++){
+    const dISO=`${calY}-${String(calM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const rec=progress[dISO]||{};
+    const full=rec.s&&rec.w&&rec.z;
+    if(rec.s)cS++;if(rec.w)cW++;if(full)cF++;
+    const c=document.createElement('div');
+    c.className='cell'+(dISO===tISO?' today':'')+(full?' full':'')+(dISO===selDate?' sel':'');
+    c.innerHTML=`<span class="dnum">${d}</span><span class="pips">${rec.s?'<i class="pip p-s"></i>':''}${rec.w?'<i class="pip p-w"></i>':''}${rec.z?'<i class="pip p-z"></i>':''}</span>`;
+    c.title=dISO;
+    c.addEventListener('click',()=>{selDate=dISO;renderScorecard();renderCalendar();
+      document.querySelector('.scorecard').scrollIntoView({behavior:'smooth',block:'center'})});
+    grid.appendChild(c);
+  }
+  document.getElementById('stFull').textContent=cF;
+  document.getElementById('stS').textContent=cS;
+  document.getElementById('stW').textContent=cW;
+}
+document.getElementById('prevM').addEventListener('click',()=>{calM--;if(calM<0){calM=11;calY--}renderCalendar()});
+document.getElementById('nextM').addEventListener('click',()=>{calM++;if(calM>11){calM=0;calY++}renderCalendar()});
+
+/* ---------- init ---------- */
+(async()=>{await loadProgress();renderScorecard();renderCalendar()})();
+</script>
+</body>
+</html>
