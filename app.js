@@ -1,3 +1,6 @@
+import { loadProgress, saveProgress } from './storage.js';
+import { computeStreak, iso } from './progress.js';
+
 /* ---------- day tabs ---------- */
 const tabs=document.querySelectorAll('.tab'),panels=document.querySelectorAll('.panel');
 function showDay(d){
@@ -8,66 +11,30 @@ tabs.forEach(t=>t.addEventListener('click',()=>showDay(t.dataset.d)));
 showDay(['sun','mon','tue','wed','thu','fri','sat'][new Date().getDay()]);
 
 /* ---------- progress store ---------- */
-const KEY='weekly-innings-progress';
-let progress={};           /* {"2026-08-20":{s:1,w:1,z:1}} */
-let memoryOnly=false;
-const hasStore=typeof window.storage!=='undefined'&&window.storage&&typeof window.storage.get==='function';
+let progress = loadProgress();
 
-async function loadProgress(attempt=1){
-  if(!hasStore){memoryOnly=true;document.getElementById('storageNote').style.display='block';return}
-  try{
-    const r=await window.storage.get(KEY);
-    if(r&&r.value)progress=JSON.parse(r.value);
-  }catch(e){
-    /* A missing key also throws — only retry on what looks like a
-       server error, so a fresh start doesn't loop forever. */
-    const msg=String(e&&e.message||e);
-    if(attempt<3&&/server|internal|network|timeout/i.test(msg)){
-      await new Promise(res=>setTimeout(res,1200*attempt));
-      return loadProgress(attempt+1);
-    }
-  }
+const saveStatus = document.getElementById('saveStatus');
+function setSaveStatus(text, color) {
+  saveStatus.textContent = text;
+  saveStatus.style.color = color || 'var(--muted)';
 }
-/* Debounced save with automatic retry — the storage backend can
-   occasionally return a transient server error, so we retry with
-   backoff and show status instead of silently dropping the tick. */
-const saveStatus=document.getElementById('saveStatus');
-let saveTimer=null,retries=0;
-function setStatus(txt,color){saveStatus.textContent=txt;saveStatus.style.color=color||'var(--muted)'}
 
-function saveProgress(){           /* callers don't need to await */
-  if(memoryOnly)return;
-  clearTimeout(saveTimer);
-  setStatus('saving…');
-  saveTimer=setTimeout(doSave,600); /* coalesce rapid ticks into one write */
-}
-async function doSave(){
-  try{
-    const r=await window.storage.set(KEY,JSON.stringify(progress));
-    if(!r)throw new Error('empty result');
-    retries=0;
-    setStatus('✓ saved','#7BC49A');
-    setTimeout(()=>{if(saveStatus.textContent==='✓ saved')setStatus('')},2500);
-  }catch(e){
-    if(retries<4){
-      retries++;
-      const wait=1000*Math.pow(2,retries-1);   /* 1s, 2s, 4s, 8s */
-      setStatus('retrying save ('+retries+'/4)…','var(--amber)');
-      saveTimer=setTimeout(doSave,wait);
-    }else{
-      retries=0;
-      setStatus('⚠ not saved — tap any tick to retry','var(--ball)');
-    }
+/* Called after every mutation. The localStorage write is synchronous and
+   effectively cannot fail, so status goes straight to saved; Task 8 hangs the
+   remote queue off the same call. */
+function commit(dates) {
+  for (const date of dates) {
+    progress[date] = { ...progress[date], u: new Date().toISOString() };
   }
+  saveProgress(progress);
+  setSaveStatus('✓ saved', '#7BC49A');
+  setTimeout(() => {
+    if (saveStatus.textContent === '✓ saved') setSaveStatus('');
+  }, 2500);
 }
-/* if a save is still pending when the page is left, try once more */
-document.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='hidden'&&saveTimer){clearTimeout(saveTimer);doSave()}
-});
 
 /* ---------- dates ---------- */
-const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-const todayISO=()=>iso(new Date());
+const todayISO = () => iso(new Date());
 let selDate=todayISO();
 
 /* ---------- scorecard ---------- */
@@ -84,25 +51,17 @@ function renderScorecard(){
   renderStreak();
 }
 Object.entries(ticks).forEach(([k,el])=>{
-  el.addEventListener('click',async()=>{
+  el.addEventListener('click',()=>{
     const rec=progress[selDate]||(progress[selDate]={});
     rec[k]=rec[k]?0:1;
     renderScorecard();renderCalendar();
-    saveProgress();
+    commit([selDate]);
   });
 });
 backBtn.addEventListener('click',()=>{selDate=todayISO();renderScorecard();renderCalendar()});
 
-function renderStreak(){
-  let n=0,d=new Date();
-  /* today counts if already complete; otherwise start from yesterday */
-  const t=progress[iso(d)];
-  if(!(t&&t.s&&t.w))d.setDate(d.getDate()-1);
-  while(true){
-    const r=progress[iso(d)];
-    if(r&&r.s&&r.w){n++;d.setDate(d.getDate()-1)}else break;
-  }
-  document.getElementById('streak').textContent=n;
+function renderStreak() {
+  document.getElementById('streak').textContent = computeStreak(progress, iso(new Date()));
 }
 
 /* ---------- calendar ---------- */
@@ -142,4 +101,5 @@ document.getElementById('prevM').addEventListener('click',()=>{calM--;if(calM<0)
 document.getElementById('nextM').addEventListener('click',()=>{calM++;if(calM>11){calM=0;calY++}renderCalendar()});
 
 /* ---------- init ---------- */
-(async()=>{await loadProgress();renderScorecard();renderCalendar()})();
+renderScorecard();
+renderCalendar();
