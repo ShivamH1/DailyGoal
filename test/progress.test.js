@@ -1,0 +1,102 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  iso, addDays, weekStart, computeStreak, mergeProgress, weeklySummary, toCSV
+} from '../progress.js';
+
+test('iso formats local date parts, not UTC', () => {
+  assert.equal(iso(new Date(2026, 7, 20, 23, 30)), '2026-08-20');
+});
+
+test('addDays crosses a month boundary', () => {
+  assert.equal(addDays('2026-08-31', 1), '2026-09-01');
+  assert.equal(addDays('2026-09-01', -1), '2026-08-31');
+});
+
+test('weekStart returns Monday for any day of that week', () => {
+  assert.equal(weekStart('2026-08-20'), '2026-08-17'); // Thu -> Mon
+  assert.equal(weekStart('2026-08-17'), '2026-08-17'); // Mon -> itself
+  assert.equal(weekStart('2026-08-23'), '2026-08-17'); // Sun -> that Mon
+});
+
+test('streak counts back from today when today is complete', () => {
+  const p = {
+    '2026-08-20': { s: 1, w: 1 },
+    '2026-08-19': { s: 1, w: 1 },
+    '2026-08-18': { s: 1, w: 1 },
+  };
+  assert.equal(computeStreak(p, '2026-08-20'), 3);
+});
+
+test('an incomplete today does not break the streak', () => {
+  const p = {
+    '2026-08-20': { s: 1, w: 0 },
+    '2026-08-19': { s: 1, w: 1 },
+    '2026-08-18': { s: 1, w: 1 },
+  };
+  assert.equal(computeStreak(p, '2026-08-20'), 2);
+});
+
+test('sleep alone does not sustain a streak', () => {
+  const p = {
+    '2026-08-19': { s: 1, w: 0, z: 1 },
+    '2026-08-18': { s: 1, w: 1 },
+  };
+  assert.equal(computeStreak(p, '2026-08-20'), 0);
+});
+
+test('merge takes the record with the later updated_at', () => {
+  const local  = { '2026-08-20': { s: 1, w: 0, u: '2026-08-20T10:00:00.000Z' } };
+  const remote = { '2026-08-20': { s: 1, w: 1, u: '2026-08-20T12:00:00.000Z' } };
+  assert.deepEqual(mergeProgress(local, remote)['2026-08-20'].w, 1);
+});
+
+test('merge does not resurrect an untick from a stale device', () => {
+  const local  = { '2026-08-20': { s: 0, w: 0, u: '2026-08-20T18:00:00.000Z' } };
+  const remote = { '2026-08-20': { s: 1, w: 1, u: '2026-08-20T09:00:00.000Z' } };
+  assert.deepEqual(mergeProgress(local, remote)['2026-08-20'].s, 0);
+});
+
+test('merge keeps dates present on only one side', () => {
+  const local  = { '2026-08-19': { s: 1, u: 'a' } };
+  const remote = { '2026-08-20': { w: 1, u: 'b' } };
+  const m = mergeProgress(local, remote);
+  assert.deepEqual(Object.keys(m).sort(), ['2026-08-19', '2026-08-20']);
+});
+
+test('a record with no timestamp loses to one that has it', () => {
+  const local  = { '2026-08-20': { s: 1, w: 1 } };
+  const remote = { '2026-08-20': { s: 0, w: 0, u: '2026-08-20T09:00:00.000Z' } };
+  assert.equal(mergeProgress(local, remote)['2026-08-20'].s, 0);
+});
+
+test('weekly summary counts each habit and collects notes in order', () => {
+  const p = {
+    '2026-08-17': { s: 1, w: 1, z: 1, note: 'linear algebra' },
+    '2026-08-18': { s: 1, w: 1, z: 0 },
+    '2026-08-19': { s: 0, w: 1, z: 1, note: 'rest brain' },
+  };
+  const sum = weeklySummary(p, '2026-08-17');
+  assert.equal(sum.study, 2);
+  assert.equal(sum.workout, 3);
+  assert.equal(sum.sleep, 2);
+  assert.equal(sum.bestStreak, 2);
+  assert.deepEqual(sum.notes, [
+    { date: '2026-08-17', note: 'linear algebra' },
+    { date: '2026-08-19', note: 'rest brain' },
+  ]);
+});
+
+test('CSV escapes quotes and commas in notes', () => {
+  const p = { '2026-08-20': { s: 1, w: 0, z: 1, note: 'SVMs, "kernels" too' } };
+  const csv = toCSV(p);
+  const [header, row] = csv.trim().split('\n');
+  assert.equal(header, 'date,study,workout,sleep,note,updated_at');
+  assert.equal(row, '2026-08-20,1,0,1,"SVMs, ""kernels"" too",');
+});
+
+test('CSV rows are sorted by date', () => {
+  const p = { '2026-08-20': { s: 1 }, '2026-08-18': { s: 1 } };
+  const rows = toCSV(p).trim().split('\n').slice(1);
+  assert.match(rows[0], /^2026-08-18/);
+});
