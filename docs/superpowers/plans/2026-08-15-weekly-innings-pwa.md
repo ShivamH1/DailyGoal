@@ -17,7 +17,7 @@
 - **ES modules everywhere.** `<script type="module">` in the browser; `import`/`export` in Node. The service worker (`sw.js`) is the one exception — classic script, loaded via `importScripts`-free plain syntax.
 - **Node 26** is installed. `node --test` is built in; do not add a test framework.
 - **Timezone is `Asia/Kolkata`.** Every "what time is it" decision goes through `Intl.DateTimeFormat` with an explicit `timeZone: 'Asia/Kolkata'`. Never use raw `getHours()` for schedule logic.
-- **Visual identity is frozen.** `styles.css` is copied verbatim from the prototype and only appended to — never edit an existing rule. Rendered markup must keep the same class names so the design is byte-identical.
+- **Visual identity is REDEFINED in Task 17b** (superseding the original spec's "no redesign" line, at the user's request). Until Task 17b, `styles.css` stays verbatim from the prototype and tasks only append to it — never edit an existing rule — so that every task before the design pass is judged on behaviour alone. Task 17b then replaces the stylesheet and reorders `index.html` wholesale. Reviewers of Tasks 1-17 should NOT flag the prototype's styling as a defect; reviewers of Task 17b judge against the design brief in that task.
 - **Do not regress accessibility.** `@media (prefers-reduced-motion: reduce)` and all `:focus-visible` rules stay. New interactive elements get keyboard focus styles.
 - **Mobile-first.** Test at 380 px width.
 - **No console errors** on a fresh load with empty storage and no Supabase config.
@@ -2136,7 +2136,188 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
+### Task 17b: Design system pass
+
+**Files:**
+- Rewrite: `styles.css` (complete replacement), `index.html` (section order + font links)
+- Modify: `app.js` (tick markup, season-strip renderer, remove the deleted hero plates' code)
+
+**Interfaces:**
+- Consumes: every component built in Tasks 1-17.
+- Produces: a token-based stylesheet and a reordered page. No JS behaviour changes — every existing function keeps its name and contract. The only JS edits are markup strings and the removal of code for elements that no longer exist.
+
+This task exists because the prototype's information architecture, not its palette, is what reads as machine-generated: a hero of four stats that never change, a schedule outranking the daily action, and cricket applied as decoration via `::before` stump dots. The page's real job is "what am I doing right now, and let me tick three things in five seconds."
+
+**Do not invent your own direction.** The palette, typefaces, page order, and signature element below are decided. Execute them.
+
+- [ ] **Step 1: Replace the font links in `index.html`**
+
+Drop Bricolage Grotesque and IBM Plex Mono entirely. Two families, one of them carrying the utility role through its width axis:
+
+```html
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap" rel="stylesheet">
+```
+
+Archivo is used at two width extremes from one family — Expanded for numerals and scores, Condensed for times and labels. Scoreboards genuinely do this, so the width axis carries meaning. It also replaces the mono face via tabular figures.
+
+- [ ] **Step 2: Write the token block at the top of the new `styles.css`**
+
+```css
+:root{
+  /* Colour — two related warm accents against a green-cast neutral,
+     deliberately not "near-black plus one neon". */
+  --field:#10261F;      /* deep pitch, the page ground */
+  --crease:#17352B;     /* raised card surface */
+  --chalk:#ECE7D9;      /* warm off-white, primary text */
+  --linseed:#E2A32B;    /* accent: oiled-willow amber, duller than neon on purpose */
+  --leather:#A33F2B;    /* ball red: misses and the streak count only */
+  --twilight:#6E8B7C;   /* secondary text, green-cast so the page reads tonal */
+  --rule:rgba(110,139,124,.22);
+
+  /* Type */
+  --ui:'Archivo',system-ui,sans-serif;
+  --prose:'Source Serif 4',Georgia,serif;
+
+  /* Spacing scale — every margin and padding on the page comes from here */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
+
+  /* The ledger gutter: the fixed left column that carries WHEN */
+  --gutter:56px;
+  --radius:10px;
+}
+@media (max-width:420px){ :root{ --gutter:44px } }
+```
+
+Every colour, size, and space in the rest of the stylesheet must reference these tokens. A raw hex or a magic pixel value outside this block is a defect.
+
+- [ ] **Step 3: Set the type scale**
+
+Six roles, no more. Use `font-variation-settings` for the width axis and `font-variant-numeric: tabular-nums` on anything numeric that updates.
+
+```css
+.t-score{font-family:var(--ui);font-variation-settings:'wdth' 125,'wght' 800;font-size:clamp(2.4rem,9vw,3.6rem);line-height:.92;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.t-title{font-family:var(--ui);font-variation-settings:'wdth' 110,'wght' 800;font-size:clamp(1.4rem,5vw,2rem);line-height:1.05;text-transform:uppercase}
+.t-label{font-family:var(--ui);font-variation-settings:'wdth' 75,'wght' 700;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--twilight)}
+.t-time{font-family:var(--ui);font-variation-settings:'wdth' 70,'wght' 500;font-size:13px;font-variant-numeric:tabular-nums;color:var(--twilight)}
+.t-body{font-family:var(--prose);font-size:15.5px;line-height:1.55}
+.t-note{font-family:var(--prose);font-size:14px;line-height:1.5;color:var(--twilight)}
+```
+
+- [ ] **Step 4: Reorder `index.html` into the new information architecture**
+
+Sections, in this exact order. Move existing markup — do not rebuild working components from scratch.
+
+1. **NOW strip** (`#nowBanner`, built in Task 13) — the very first element on the page, above everything, sitting in the ledger gutter.
+2. **Today card** — date, the three ticks, the daily note input, the streak, the save and sync lines.
+3. **Season strip** — the month grid.
+4. **This week** — the four summary tiles.
+5. **Schedule** — day tabs and panels, demoted below the fold. Give the section a `.t-label` heading reading `SCHEDULE` so its new position reads as deliberate.
+6. **Match rules**, then the footer with the export buttons.
+
+**Delete outright:** the entire `.board` block of four hero plates and its CSS. Those numbers never change and never prompt an action. The exam countdown from Task 15 moves into the Today card as a single `.t-label` line reading `DL exam · 23 days` — remove the `#examNum` / `#examCap` plate wiring in `app.js` and repoint `renderExam()` at the new element. Keep the function's name and behaviour.
+
+- [ ] **Step 5: Build the ledger gutter**
+
+One structural device, used by the NOW strip, every timeline row, and the week card: a fixed left column of `var(--gutter)` carrying *when* — the time, the day letter, the date. It replaces the prototype's `118px / 14px / 1fr` row grid.
+
+```css
+.ledger{display:grid;grid-template-columns:var(--gutter) 1fr;gap:0 var(--s4);align-items:start}
+.ledger > .when{text-align:right;padding-top:2px}
+```
+
+The coloured lane bar becomes a 2px left border on the content cell rather than its own grid column — same information, one less column to align at 380 px.
+
+- [ ] **Step 6: Make the three ticks the hero**
+
+They are the thing touched twice a day; everything else on the page is reference. Three across at every width, each at least 96 px tall, each a real `<button>`.
+
+The tick's mark is an inline SVG check whose path draws on when the tick is set — this is the page's one motion moment, and it must be reduced-motion safe:
+
+```css
+.tick .mark path{stroke:var(--field);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:24;stroke-dashoffset:24;transition:stroke-dashoffset .26s cubic-bezier(.2,.8,.3,1)}
+.tick.done .mark path{stroke-dashoffset:0}
+@media (prefers-reduced-motion:reduce){ .tick .mark path{transition:none} }
+```
+
+Everything else on the page stays still. Do not add scroll reveals, hover lifts, or entrance animations.
+
+- [ ] **Step 7: Build the season strip — the signature element**
+
+The month rendered as a scorebook page. In a real scorebook a dot ball means *failed to score*, which maps onto a missed habit exactly, so the metaphor does work rather than sitting on top.
+
+- Seven columns, hairline `1px solid var(--rule)` separating rows. **Hairline rules appear nowhere else on the page** — a scorebook genuinely has them here, which is what makes them earned rather than a broadsheet affectation.
+- Complete day (all three): a filled `var(--linseed)` block with the day number knocked out in `var(--field)`.
+- Partial day: up to three small bars in the cell — study, workout, sleep — in `--linseed`, `--leather`, `--chalk`.
+- Past day with nothing recorded: a centred `·` in `var(--twilight)`. That is the dot ball.
+- Future day: empty.
+- Today: a 1px `var(--linseed)` ring.
+- **Consecutive complete days sit flush with no gap between them**, so a streak reads as one continuous bar across the strip. This is the reward surface — it should be the most satisfying thing on the page to look at.
+
+- [ ] **Step 8: Quality floor**
+
+- Single column, mobile-first; verify at 380 px with no horizontal scrolling anywhere.
+- Visible keyboard focus on every interactive element: `outline:2px solid var(--linseed);outline-offset:2px`. Ticks, tabs, calendar cells, note input, export buttons.
+- `@media (prefers-reduced-motion:reduce)` disables the tick draw and any transition.
+- Contrast: `--chalk` on `--field` and `--twilight` on `--field` must both clear WCAG AA for their sizes. Check `--twilight` at 11 px specifically — if it fails, lighten the token rather than enlarging the text.
+- No `!important`. No selector fighting: the prototype's `.section` versus `.cta` style of specificity collision is what this rewrite exists to remove.
+
+- [ ] **Step 9: Verify nothing behavioural regressed**
+
+Run: `npm test`
+Expected: PASS, 40 tests, 0 failures — this task changes no logic, so any failure means you edited behaviour by accident.
+
+Run: `node --check app.js`
+Expected: exit 0.
+
+Then confirm by reading `app.js` that every function kept its name and contract: `commit`, `renderScorecard`, `renderCalendar`, `renderStreak`, `renderNow`, `renderWeek`, `renderExam`, `flushSync`, `queueSync`, `describeIdle`, `download`.
+
+- [ ] **Step 10: Commit in three parts**
+
+```bash
+git add index.html styles.css
+GIT_AUTHOR_DATE="2026-08-18T14:10:00+05:30" GIT_COMMITTER_DATE="2026-08-18T14:10:00+05:30" \
+git -c user.name="Shivam Honrao" -c user.email="shivam.sanjay@truworthwellness.com" \
+commit -m "Replace the stylesheet with a token-based design system
+
+Archivo at two width extremes replaces Bricolage Grotesque and IBM Plex
+Mono; the palette moves off dark-plus-neon to two warm accents over a
+green-cast neutral.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+```
+
+```bash
+git add index.html app.js
+GIT_AUTHOR_DATE="2026-08-18T14:40:00+05:30" GIT_COMMITTER_DATE="2026-08-18T14:40:00+05:30" \
+git -c user.name="Shivam Honrao" -c user.email="shivam.sanjay@truworthwellness.com" \
+commit -m "Reorder the page around the daily action
+
+The scorecard leads and the schedule moves below the fold. Drops the
+four hero stat plates: none of those numbers change or prompt an action.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+```
+
+```bash
+git add styles.css app.js
+GIT_AUTHOR_DATE="2026-08-18T15:10:00+05:30" GIT_COMMITTER_DATE="2026-08-18T15:10:00+05:30" \
+git -c user.name="Shivam Honrao" -c user.email="shivam.sanjay@truworthwellness.com" \
+commit -m "Rebuild the month grid as a scorebook season strip
+
+A missed day is a dot ball; consecutive complete days sit flush so a
+streak reads as one continuous bar.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
 ### Task 18: Final verification and README
+
+Runs AFTER Task 17b, not before it.
 
 **Files:**
 - Modify: `README.md`, `sw.js` (cache version bump)
@@ -2172,7 +2353,7 @@ Then, on the deployed URL:
 
 ```bash
 git add README.md sw.js
-GIT_AUTHOR_DATE="2026-08-18T13:35:00+05:30" GIT_COMMITTER_DATE="2026-08-18T13:35:00+05:30" \
+GIT_AUTHOR_DATE="2026-08-18T15:45:00+05:30" GIT_COMMITTER_DATE="2026-08-18T15:45:00+05:30" \
 git -c user.name="Shivam Honrao" -c user.email="shivam.sanjay@truworthwellness.com" \
 commit -m "Document setup and deploy; bump service worker cache to v2
 
