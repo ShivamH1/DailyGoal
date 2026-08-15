@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Weekly Innings — Schedule &amp; Progress Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow">Season 2026 · Pune <b>●</b> Work × BITS WILP AI&nbsp;ML × Cricket</div>
+    <h1>The Weekly<br>Innings <span class="thin">— one over at a time</span></h1>
+    <p class="sub">Four subjects, seven workouts, two matches, one sustainable week. Tick your scorecard daily — the calendar keeps the running total.</p>
+
+    <div class="board" aria-label="Weekly totals scoreboard">
+      <div class="plate"><div class="num">4</div><div class="cap">Subjects in play</div></div>
+      <div class="plate"><div class="num">8+</div><div class="cap">Study hrs / wk</div></div>
+      <div class="plate"><div class="num">7</div><div class="cap">Workout days</div></div>
+      <div class="plate"><div class="num">7.5</div><div class="cap">Sleep hrs / night</div></div>
+    </div>
+
+    <!-- Daily scorecard -->
+    <div class="scorecard">
+      <div class="sc-head">
+        <h2>Today's scorecard</h2>
+        <div class="date"><span id="scDate"></span><button id="backToday" style="display:none">back to today</button></div>
+      </div>
+      <div class="ticks">
+        <button class="tick" id="t-s"><span class="box">✓</span><span class="lbl"><b>Study hour done</b><em>Morning block · subject of the day</em></span></button>
+        <button class="tick" id="t-w"><span class="box">✓</span><span class="lbl"><b>Workout done</b><em>Walk · run · home workout · match</em></span></button>
+        <button class="tick" id="t-z"><span class="box">✓</span><span class="lbl"><b>Slept by 11</b><em>The rule that makes the rest work</em></span></button>
+      </div>
+      <div class="streak">Current streak (study + workout): <b id="streak">0</b> days <span id="saveStatus" style="margin-left:14px;font-size:10.5px;color:var(--muted)"></span></div>
+      <div class="storage-note" id="storageNote">Progress can't be saved in this view — ticks will reset when you close the page.</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="legend">
+    <span><i class="dot d-study"></i>Study</span>
+    <span><i class="dot d-work"></i>Work</span>
+    <span><i class="dot d-fit"></i>Workout</span>
+    <span><i class="dot d-cricket"></i>Cricket</span>
+    <span><i class="dot d-rest"></i>Rest &amp; free</span>
+  </div>
+
+  <section class="days">
+    <div class="tabs" role="tablist" aria-label="Days of the week">
+      <button class="tab" role="tab" data-d="mon"><span class="full">Mon</span><span class="short">M</span></button>
+      <button class="tab" role="tab" data-d="tue"><span class="full">Tue</span><span class="short">T</span></button>
+      <button class="tab" role="tab" data-d="wed"><span class="full">Wed</span><span class="short">W</span></button>
+      <button class="tab" role="tab" data-d="thu"><span class="full">Thu</span><span class="short">T</span></button>
+      <button class="tab" role="tab" data-d="fri"><span class="full">Fri</span><span class="short">F</span></button>
+      <button class="tab" role="tab" data-d="sat"><span class="full">Sat</span><span class="short">S</span></button>
+      <button class="tab" role="tab" data-d="sun"><span class="full">Sun</span><span class="short">S</span></button>
+    </div>
+
+    <!-- MONDAY -->
+    <div class="panel" id="p-mon" role="tabpanel">
+      <div class="day-head"><h2>Monday</h2><span class="tag">Consolidation day</span></div>
+      <p class="day-note">Replay the weekend's lectures across all four subjects while they're fresh. Decide which topics Tue–Fri mornings will cover.</p>
+      <div class="row"><div class="time">6:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up</strong><em>No phone for the first 15 minutes</em></div></div>
+      <div class="row"><div class="time">6:45 – 7:45</div><div class="bar b-study"></div><div class="what"><strong>Study — weekend review<span class="subj">All subjects</span></strong><em>Consolidate Sat/Sun classes · plan the week's topics</em></div></div>
+      <div class="row"><div class="time">7:45 – 8:45</div><div class="bar b-rest"></div><div class="what"><strong>Breakfast &amp; get ready</strong></div></div>
+      <div class="row"><div class="time">9:30 – 6:30</div><div class="bar b-work"></div><div class="what"><strong>Work</strong><em>Truworth Wellness</em></div></div>
+      <div class="row"><div class="time">7:15 – 8:15</div><div class="bar b-fit"></div><div class="what"><strong>Home workout — full body<span class="effort hard">Hard</span></strong><em>Push-ups, squats, lunges, plank circuit · 3–4 rounds</em></div></div>
+      <div class="row"><div class="time">8:15 – 9:15</div><div class="bar b-rest"></div><div class="what"><strong>Shower &amp; dinner</strong></div></div>
+      <div class="row"><div class="time">9:15 – 10:15</div><div class="bar b-rest"></div><div class="what"><strong>Free time</strong><em>Genuinely free — no guilt</em></div></div>
+      <div class="row"><div class="time">11:00</div><div class="bar b-rest"></div><div class="what"><strong>Lights out</strong></div></div>
+    </div>
+
+    <!-- TUESDAY -->
+    <div class="panel" id="p-tue" role="tabpanel">
+      <div class="day-head"><h2>Tuesday</h2><span class="tag">Maths morning</span></div>
+      <p class="day-note">Maths Foundation gets the freshest brain of the week — everything in ML and DL stands on it. The evening walk keeps the body moving while it recovers from Monday.</p>
+      <div class="row"><div class="time">6:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up</strong></div></div>
+      <div class="row"><div class="time">6:45 – 7:45</div><div class="bar b-study"></div><div class="what"><strong>Study<span class="subj">Maths Foundation for ML</span></strong><em>Linear algebra, calculus, optimisation · work problems by hand</em></div></div>
+      <div class="row"><div class="time">7:45 – 8:45</div><div class="bar b-rest"></div><div class="what"><strong>Breakfast &amp; get ready</strong></div></div>
+      <div class="row"><div class="time">9:30 – 6:30</div><div class="bar b-work"></div><div class="what"><strong>Work</strong></div></div>
+      <div class="row"><div class="time">7:15 – 8:15</div><div class="bar b-fit"></div><div class="what"><strong>Brisk walk — 60 min<span class="effort easy">Easy</span></strong><em>Recovery pace · podcast or lecture audio if you like</em></div></div>
+      <div class="row"><div class="time">8:15 – 9:15</div><div class="bar b-rest"></div><div class="what"><strong>Shower &amp; dinner</strong></div></div>
+      <div class="row"><div class="time">9:15 – 10:15</div><div class="bar b-rest"></div><div class="what"><strong>Free time</strong></div></div>
+      <div class="row"><div class="time">11:00</div><div class="bar b-rest"></div><div class="what"><strong>Lights out</strong></div></div>
+    </div>
+
+    <!-- WEDNESDAY -->
+    <div class="panel" id="p-wed" role="tabpanel">
+      <div class="day-head"><h2>Wednesday</h2><span class="tag">Mid-week double</span></div>
+      <p class="day-note">Machine Learning in the morning, a run in the evening, then one light study hour — the only weekday with two study blocks, so the run stays moderate.</p>
+      <div class="row"><div class="time">6:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up</strong></div></div>
+      <div class="row"><div class="time">6:45 – 7:45</div><div class="bar b-study"></div><div class="what"><strong>Study<span class="subj">Machine Learning</span></strong><em>Algorithms &amp; theory · connect back to Tuesday's maths</em></div></div>
+      <div class="row"><div class="time">7:45 – 8:45</div><div class="bar b-rest"></div><div class="what"><strong>Breakfast &amp; get ready</strong></div></div>
+      <div class="row"><div class="time">9:30 – 6:30</div><div class="bar b-work"></div><div class="what"><strong>Work</strong></div></div>
+      <div class="row"><div class="time">7:15 – 8:15</div><div class="bar b-fit"></div><div class="what"><strong>Run — 40–50 min<span class="effort">Moderate</span></strong><em>Steady pace, or easy intervals · finish able to talk</em></div></div>
+      <div class="row"><div class="time">8:15 – 9:15</div><div class="bar b-rest"></div><div class="what"><strong>Shower &amp; dinner</strong></div></div>
+      <div class="row"><div class="time">9:15 – 10:15</div><div class="bar b-study"></div><div class="what"><strong>Study — light hour<span class="subj">Weakest subject</span></strong><em>Lecture videos &amp; notes only — no heavy problem-solving at night</em></div></div>
+      <div class="row"><div class="time">11:00</div><div class="bar b-rest"></div><div class="what"><strong>Lights out</strong></div></div>
+    </div>
+
+    <!-- THURSDAY -->
+    <div class="panel" id="p-thu" role="tabpanel">
+      <div class="day-head"><h2>Thursday</h2><span class="tag">Power play</span></div>
+      <p class="day-note">Deep Learning builds directly on Tuesday's maths and Wednesday's ML — that's why it sits here. Last hard workout of the week; the load tapers from tomorrow.</p>
+      <div class="row"><div class="time">6:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up</strong></div></div>
+      <div class="row"><div class="time">6:45 – 7:45</div><div class="bar b-study"></div><div class="what"><strong>Study<span class="subj">Deep Learning</span></strong><em>Theory + code · implement small pieces in Python</em></div></div>
+      <div class="row"><div class="time">7:45 – 8:45</div><div class="bar b-rest"></div><div class="what"><strong>Breakfast &amp; get ready</strong></div></div>
+      <div class="row"><div class="time">9:30 – 6:30</div><div class="bar b-work"></div><div class="what"><strong>Work</strong></div></div>
+      <div class="row"><div class="time">7:15 – 8:15</div><div class="bar b-fit"></div><div class="what"><strong>Home workout — strength &amp; core<span class="effort hard">Hard</span></strong><em>Push-up variations, split squats, core circuit</em></div></div>
+      <div class="row"><div class="time">8:15 – 9:15</div><div class="bar b-rest"></div><div class="what"><strong>Shower &amp; dinner</strong></div></div>
+      <div class="row"><div class="time">9:15 – 10:15</div><div class="bar b-rest"></div><div class="what"><strong>Free time</strong></div></div>
+      <div class="row"><div class="time">11:00</div><div class="bar b-rest"></div><div class="what"><strong>Lights out</strong></div></div>
+    </div>
+
+    <!-- FRIDAY -->
+    <div class="panel" id="p-fri" role="tabpanel">
+      <div class="day-head"><h2>Friday</h2><span class="tag">Taper &amp; recover</span></div>
+      <p class="day-note">Statistical Methods closes the study week. Easy walk plus stretching in the evening — you want loose hamstrings, not sore ones, for tomorrow's match.</p>
+      <div class="row"><div class="time">6:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up</strong></div></div>
+      <div class="row"><div class="time">6:45 – 7:45</div><div class="bar b-study"></div><div class="what"><strong>Study<span class="subj">Statistical Methods</span></strong><em>Distributions, inference, hypothesis testing · flag doubts for weekend classes</em></div></div>
+      <div class="row"><div class="time">7:45 – 8:45</div><div class="bar b-rest"></div><div class="what"><strong>Breakfast &amp; get ready</strong></div></div>
+      <div class="row"><div class="time">9:30 – 6:30</div><div class="bar b-work"></div><div class="what"><strong>Work</strong></div></div>
+      <div class="row"><div class="time">7:15 – 8:15</div><div class="bar b-fit"></div><div class="what"><strong>Easy walk + full stretch<span class="effort easy">Very easy</span></strong><em>30 min walk · 20 min hips, hamstrings, shoulders</em></div></div>
+      <div class="row"><div class="time">8:15 onwards</div><div class="bar b-rest"></div><div class="what"><strong>Free evening</strong><em>Fully unclaimed — this is the slack in the system</em></div></div>
+      <div class="row"><div class="time">11:00</div><div class="bar b-rest"></div><div class="what"><strong>Lights out</strong><em>Match tomorrow — protect the sleep</em></div></div>
+    </div>
+
+    <!-- SATURDAY -->
+    <div class="panel" id="p-sat" role="tabpanel">
+      <div class="day-head"><h2>Saturday</h2><span class="tag">Match day · Class day</span></div>
+      <p class="day-note">Classes in the morning, cricket in the evening. The nap in between is not optional — it's what makes both halves work.</p>
+      <div class="row"><div class="time">7:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up — slightly later</strong><em>Optional 20 min mobility to loosen up</em></div></div>
+      <div class="row"><div class="time">Morning</div><div class="bar b-study"></div><div class="what"><strong>BITS WILP contact classes<span class="subj">Per timetable</span></strong><em>Attend live · ask the doubts flagged on Friday</em></div></div>
+      <div class="row"><div class="time">1:00 – 2:00</div><div class="bar b-rest"></div><div class="what"><strong>Lunch</strong><em>Proper meal + hydrate — you'll sweat it out at 3:30</em></div></div>
+      <div class="row"><div class="time">2:00 – 3:00</div><div class="bar b-rest"></div><div class="what"><strong>Nap</strong></div></div>
+      <div class="row"><div class="time">3:30 – 7:30</div><div class="bar b-cricket"></div><div class="what"><strong>Cricket match<span class="effort hard">Match</span></strong><em>This is the workout — tick it on the scorecard</em></div></div>
+      <div class="row"><div class="time">8:00 – 9:00</div><div class="bar b-rest"></div><div class="what"><strong>Dinner &amp; wind down</strong></div></div>
+      <div class="row"><div class="time">Evening</div><div class="bar b-rest"></div><div class="what"><strong>Completely free</strong><em>No study, no assignments, no guilt</em></div></div>
+      <div class="row"><div class="time">11:00</div><div class="bar b-rest"></div><div class="what"><strong>Lights out</strong></div></div>
+    </div>
+
+    <!-- SUNDAY -->
+    <div class="panel" id="p-sun" role="tabpanel">
+      <div class="day-head"><h2>Sunday</h2><span class="tag">Match day · Assignments</span></div>
+      <p class="day-note">Class or assignments in the morning — rotate the assignment subject by whatever's due next. The day ends when the match ends.</p>
+      <div class="row"><div class="time">7:30</div><div class="bar b-rest"></div><div class="what"><strong>Wake up</strong></div></div>
+      <div class="row"><div class="time">Morning</div><div class="bar b-study"></div><div class="what"><strong>Class — or assignment block (2 hrs)<span class="subj">Rotating</span></strong><em>Whichever subject has the nearest deadline</em></div></div>
+      <div class="row"><div class="time">1:00 – 2:00</div><div class="bar b-rest"></div><div class="what"><strong>Lunch</strong></div></div>
+      <div class="row"><div class="time">2:00 – 3:00</div><div class="bar b-rest"></div><div class="what"><strong>Nap</strong></div></div>
+      <div class="row"><div class="time">3:30 – 7:30</div><div class="bar b-cricket"></div><div class="what"><strong>Cricket match<span class="effort hard">Match</span></strong></div></div>
+      <div class="row"><div class="time">8:00 – 9:00</div><div class="bar b-rest"></div><div class="what"><strong>Dinner &amp; recovery</strong><em>Stretch 10 min · big glass of water</em></div></div>
+      <div class="row"><div class="time">9:00 – 10:30</div><div class="bar b-rest"></div><div class="what"><strong>Wind down</strong><em>Lay out Monday: notes, workout clothes, breakfast plan</em></div></div>
+      <div class="row"><div class="time">10:30</div><div class="bar b-rest"></div><div class="what"><strong>Lights out — earlier tonight</strong><em>The week starts at 6:30 sharp</em></div></div>
+    </div>
+  </section>
+
+  <!-- MONTH CALENDAR -->
+  <section class="month">
+    <h3>The season board <span>— month at a glance</span></h3>
+    <p class="hint">Each day shows three pips: <b style="color:var(--amber)">study</b>, <b style="color:var(--ball)">workout</b>, <b style="color:var(--chalk)">sleep</b>. Complete all three and the day turns green. Tap any past day to edit its scorecard.</p>
+    <div class="cal-nav">
+      <button id="prevM" aria-label="Previous month">‹ Prev</button>
+      <div class="mname" id="mName"></div>
+      <button id="nextM" aria-label="Next month">Next ›</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-stats">
+      <span>Green days this month: <b id="stFull">0</b></span>
+      <span>Study days: <b id="stS">0</b></span>
+      <span>Workout days: <b id="stW">0</b></span>
+    </div>
+  </section>
+
+  <!-- RULES -->
+  <section class="rules">
+    <h3>Match rules <span>— why this holds up</span></h3>
+    <div class="rule-grid">
+      <div class="rule"><b>One subject per morning</b><p>Maths Tue, ML Wed, DL Thu, Stats Fri. Depth beats juggling — and the order follows the dependency chain: maths feeds ML, ML feeds DL.</p></div>
+      <div class="rule"><b>Intensity waves, not flat effort</b><p>Hard Mon &amp; Thu (home workouts), easy Tue &amp; Fri (walks), moderate Wed (run). Daily movement works only because the effort rises and falls.</p></div>
+      <div class="rule red"><b>Friday tapers into the weekend</b><p>Walk and stretch on Friday, matches Sat–Sun. Eight hours of cricket is the real training load — the week is built around it.</p></div>
+      <div class="rule"><b>Mornings are for the hard subjects</b><p>One fresh hour at 6:45 beats three exhausted hours at 10 PM. AI &amp; ML is cumulative — the maths must be understood, not memorised.</p></div>
+      <div class="rule red"><b>Don't break the chain — but never twice</b><p>Missing one day is a rain delay, not a lost season. The rule: never miss two days in a row. That single rule protects every streak.</p></div>
+      <div class="rule"><b>Sleep is the umpire</b><p>7.5 hours, non-negotiable. If soreness lingers past two days or match performance dips, swap a hard day for a walk — don't drop the habit.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Weekdays: 5 study hrs · Wed +1 · Sun +2 ≈ 8 hrs self-study / week</span>
+    <span>Fix wake-up + morning study first · add the rest after two weeks</span>
+  </footer>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
