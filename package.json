@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "config": "node tools/make-config.mjs",
+    "pretest": "node tools/make-config.mjs",
+    "build": "node tools/make-config.mjs",
     "test": "node --test \"test/**/*.test.js\"",
     "dev": "python3 -m http.server 8080"
   }
