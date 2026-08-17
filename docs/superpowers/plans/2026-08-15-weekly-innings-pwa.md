@@ -749,6 +749,8 @@ export const USER_ID = '<uuid, matching the RLS policy in supabase/schema.sql>';
 
 - [ ] **Step 4: Write `exams.js`**
 
+> **Superseded by Task 15.** The user supplied the real BITS WILP schedule after this task shipped: EC1/EC2/EC3 are exam *windows* covering every subject, not one date per subject. Task 15 rewrites this file. Implement it as written here so the history stays honest; Task 15 carries the correction.
+
 ```js
 /* Drives the exam-countdown line. Nearest future date wins.
    Provisional dates — replace with the real BITS WILP exam schedule. */
@@ -2004,16 +2006,129 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 15: Exam countdown plate
+### Task 15: Exam countdown
 
 **Files:**
+- Rewrite: `exams.js`
+- Create: `test/exams.test.js`
 - Modify: `index.html` (fourth hero plate gets ids), `app.js` (`renderExam`)
 
 **Interfaces:**
-- Consumes: `EXAM_DATES` from `exams.js`; `iso` from `progress.js`.
-- Produces: `renderExam()`, called once on load.
+- Consumes: `iso` from `progress.js`.
+- Produces:
+  - `exams.js` exports `EXAMS` — `[{label, dates}]` where `dates` is an array of `"YYYY-MM-DD"` strings, ascending.
+  - `exams.js` exports `nextExam(todayIso) -> {label, date, days} | null` — the nearest date on or after `todayIso` across all groups.
+  - `exams.js` exports `formatExamDates(dates) -> string` — a human span.
+  - `app.js` gains `renderExam()`, called once on load.
 
-- [ ] **Step 1: Give the fourth plate ids in `index.html`**
+**Why this replaces the provisional data:** BITS WILP evaluation components are scheduled as windows covering every subject at once, not per-subject exams. Task 6 shipped four invented per-subject dates as a placeholder; this task replaces them with the real schedule the user supplied.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `test/exams.test.js`:
+
+```js
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { EXAMS, nextExam, formatExamDates } from '../exams.js';
+
+test('the three evaluation components are present and ascending', () => {
+  assert.deepEqual(EXAMS.map((e) => e.label), ['EC-1', 'EC-2', 'EC-3']);
+  for (const ec of EXAMS) {
+    assert.ok(ec.dates.length > 0, `${ec.label} has no dates`);
+    assert.deepEqual(ec.dates, [...ec.dates].sort(), `${ec.label} is not ascending`);
+  }
+});
+
+test('nextExam finds the nearest upcoming date across all groups', () => {
+  const n = nextExam('2026-08-20');
+  assert.equal(n.label, 'EC-1');
+  assert.equal(n.date, '2026-08-24');
+  assert.equal(n.days, 4);
+});
+
+test('a date equal to today reports zero days, not the following one', () => {
+  const n = nextExam('2026-08-26');
+  assert.equal(n.date, '2026-08-26');
+  assert.equal(n.days, 0);
+});
+
+test('between two windows it skips to the next group', () => {
+  const n = nextExam('2026-09-01');
+  assert.equal(n.label, 'EC-2');
+  assert.equal(n.date, '2026-09-19');
+});
+
+test('after the last exam it returns null rather than a negative countdown', () => {
+  assert.equal(nextExam('2027-01-01'), null);
+});
+
+test('formatExamDates collapses a contiguous run into a span', () => {
+  assert.equal(formatExamDates(['2026-08-24','2026-08-25','2026-08-26','2026-08-27','2026-08-28']), '24–28 Aug 2026');
+});
+
+test('formatExamDates lists non-contiguous dates instead of faking a span', () => {
+  assert.equal(formatExamDates(['2026-09-19','2026-09-20','2026-09-26','2026-09-27']), '19, 20, 26, 27 Sep 2026');
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `npm test`
+Expected: FAIL — `nextExam` and `formatExamDates` are not exported by `exams.js`.
+
+- [ ] **Step 3: Rewrite `exams.js`**
+
+```js
+/* BITS WILP evaluation components, 2026. Each EC is a window covering every
+   subject, which is why these are date lists rather than per-subject dates. */
+
+export const EXAMS = [
+  { label: 'EC-1', dates: ['2026-08-24', '2026-08-25', '2026-08-26', '2026-08-27', '2026-08-28'] },
+  { label: 'EC-2', dates: ['2026-09-19', '2026-09-20', '2026-09-26', '2026-09-27'] },
+  { label: 'EC-3', dates: ['2026-12-05', '2026-12-06', '2026-12-12', '2026-12-13'] },
+];
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const dayNum = (d) => Number(d.slice(8, 10));
+
+export function nextExam(todayIso) {
+  let best = null;
+  for (const ec of EXAMS) {
+    for (const date of ec.dates) {
+      if (date >= todayIso && (!best || date < best.date)) best = { label: ec.label, date };
+    }
+  }
+  if (!best) return null;
+  const days = Math.round(
+    (new Date(best.date + 'T00:00:00') - new Date(todayIso + 'T00:00:00')) / 86400000
+  );
+  return { ...best, days };
+}
+
+export function formatExamDates(dates) {
+  if (!dates.length) return '';
+  const month = MONTHS[Number(dates[0].slice(5, 7)) - 1];
+  const year = dates[0].slice(0, 4);
+  const nums = dates.map(dayNum);
+  /* A run of consecutive days reads better as a span; anything else has to be
+     listed, because "19–27 Sep" would claim six days that are not exams. */
+  const contiguous = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+  const body = contiguous && nums.length > 1
+    ? `${nums[0]}–${nums[nums.length - 1]} ${month}`
+    : `${nums.join(', ')} ${month}`;
+  return `${body} ${year}`;
+}
+```
+
+Note `formatExamDates` assumes a single month per group, which holds for all three real windows. If a future EC straddles a month boundary, it needs a second branch — leave that until it happens.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `npm test`
+Expected: PASS, 49 tests total, 0 failures.
+
+- [ ] **Step 5: Give the fourth plate ids in `index.html`**
 
 Replace the fourth `.plate` (`7.5 / Sleep hrs / night`) with:
 
@@ -2021,52 +2136,55 @@ Replace the fourth `.plate` (`7.5 / Sleep hrs / night`) with:
 <div class="plate"><div class="num" id="examNum">7.5</div><div class="cap" id="examCap">Sleep hrs / night</div></div>
 ```
 
-Keeping the sleep numbers as the fallback means the plate still reads correctly when no exam date is in the future.
+Keeping the sleep numbers as the fallback means the plate still reads correctly once every exam is past. (Task 17b later moves this into the Today card as a single line and repoints `renderExam` at it.)
 
-- [ ] **Step 2: Add the renderer to `app.js`**
-
-Import the exam list (it lives in the committed `exams.js`, not the generated `config.js`):
+- [ ] **Step 6: Add the renderer to `app.js`**
 
 ```js
-import { EXAM_DATES } from './exams.js';
+import { nextExam, formatExamDates, EXAMS } from './exams.js';
 ```
-
-Then:
 
 ```js
 /* ---------- exam countdown ---------- */
 function renderExam() {
-  const today = iso(new Date());
-  const next = EXAM_DATES
-    .filter((e) => e.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date))[0];
-  if (!next) return;   /* all exams past — the plate keeps its sleep default */
+  const next = nextExam(todayISO());
+  if (!next) return;   /* every exam past — the plate keeps its sleep default */
 
-  const days = Math.round(
-    (new Date(next.date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000
-  );
-  document.getElementById('examNum').textContent = days;
-  document.getElementById('examCap').textContent =
-    days === 0 ? `${next.short} exam · today` : `${next.short} exam · days`;
-  document.getElementById('examNum').title = `${next.subject} — ${next.date}`;
+  const num = document.getElementById('examNum');
+  const cap = document.getElementById('examCap');
+  num.textContent = next.days;
+  cap.textContent = next.days === 0 ? `${next.label} · today`
+                  : next.days === 1 ? `${next.label} · day away`
+                  : `${next.label} · days away`;
+  const group = EXAMS.find((e) => e.label === next.label);
+  num.title = `${next.label} · ${formatExamDates(group.dates)}`;
 }
 
 renderExam();
 ```
 
-- [ ] **Step 3: Verify**
+- [ ] **Step 7: Verify**
 
-Expected: the fourth plate reads the day count with a caption like `DL EXAM · DAYS`. Temporarily set one `EXAM_DATES` entry to today and reload.
-Expected: `0` and `… exam · today`. Set every date to the past and reload.
-Expected: the plate falls back to `7.5 / Sleep hrs / night` with no console error. Restore the real dates afterwards.
+Expected: with today at 2026-08-20 the plate reads `4` over `EC-1 · days away`, and hovering the number shows `EC-1 · 24–28 Aug 2026`.
 
-- [ ] **Step 4: Commit**
+Run: `node -e "import('./exams.js').then(m=>{console.log(m.nextExam('2026-08-20')); console.log(m.formatExamDates(m.EXAMS[0].dates)); console.log(m.formatExamDates(m.EXAMS[1].dates))})"`
+Expected:
+```
+{ label: 'EC-1', date: '2026-08-24', days: 4 }
+24–28 Aug 2026
+19, 20, 26, 27 Sep 2026
+```
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add index.html app.js
+git add exams.js test/exams.test.js index.html app.js
 GIT_AUTHOR_DATE="2026-08-18T11:55:00+05:30" GIT_COMMITTER_DATE="2026-08-18T11:55:00+05:30" \
 git -c user.name="Shivam Honrao" -c user.email="shivam.sanjay@truworthwellness.com" \
-commit -m "Show the nearest exam countdown on the fourth scoreboard plate
+commit -m "Show the next BITS WILP evaluation component as a countdown
+
+Replaces the provisional per-subject dates: EC1/EC2/EC3 are windows
+covering every subject, so the data is date lists, not one date each.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
@@ -2365,7 +2483,7 @@ The month rendered as a scorebook page. In a real scorebook a dot ball means *fa
 - [ ] **Step 9: Verify nothing behavioural regressed**
 
 Run: `npm test`
-Expected: PASS, 43 tests, 0 failures — this task changes no logic, so any failure means you edited behaviour by accident.
+Expected: PASS, 49 tests, 0 failures — this task changes no logic, so any failure means you edited behaviour by accident.
 
 Run: `node --check app.js`
 Expected: exit 0.
@@ -2431,7 +2549,7 @@ In `sw.js`, add `'./schedule.js',` to `SHELL` (Task 10 could not precache it bec
 - [ ] **Step 2: Run the full test suite**
 
 Run: `npm test`
-Expected: PASS, 43 tests, 0 failures. Paste the actual summary line into the commit message body — do not claim a pass you have not seen.
+Expected: PASS, 49 tests, 0 failures. Paste the actual summary line into the commit message body — do not claim a pass you have not seen.
 
 - [ ] **Step 3: Complete the README**
 
