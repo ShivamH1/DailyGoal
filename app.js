@@ -1,5 +1,6 @@
-import { loadProgress, saveProgress } from './storage.js';
-import { computeStreak, iso } from './progress.js';
+import { loadProgress, saveProgress, loadPending, markPending, clearPending } from './storage.js';
+import { computeStreak, iso, mergeProgress } from './progress.js';
+import { pull, push, isConfigured } from './sync.js';
 
 /* ---------- day tabs ---------- */
 const tabs=document.querySelectorAll('.tab'),panels=document.querySelectorAll('.panel');
@@ -31,6 +32,61 @@ function commit(dates) {
   setTimeout(() => {
     if (saveStatus.textContent === '✓ saved') setSaveStatus('');
   }, 2500);
+  queueSync(dates);
+}
+
+/* ---------- remote sync ---------- */
+const syncEl = document.getElementById('syncStatus');
+let lastSyncAt = null;
+let syncTimer = null;
+let attempt = 0;
+
+function setSyncStatus(text, color) {
+  syncEl.textContent = text;
+  syncEl.style.color = color || 'var(--muted)';
+}
+
+function describeIdle() {
+  const pending = loadPending();
+  if (!isConfigured()) return setSyncStatus('local only · sync not configured');
+  if (pending.length) return setSyncStatus(`offline · ${pending.length} unsynced`, 'var(--amber)');
+  if (lastSyncAt) {
+    const mins = Math.round((Date.now() - lastSyncAt) / 60000);
+    return setSyncStatus(mins < 1 ? 'synced · just now' : `synced · ${mins} min ago`);
+  }
+  setSyncStatus('');
+}
+
+async function flushSync() {
+  if (!isConfigured()) return describeIdle();
+  const dates = loadPending();
+  if (!dates.length) return describeIdle();
+  setSyncStatus('syncing…');
+  try {
+    await push(progress, dates);
+    clearPending(dates);
+    lastSyncAt = Date.now();
+    attempt = 0;
+    describeIdle();
+  } catch {
+    /* Back off 1s, 2s, 4s, 8s, then stop and wait for the next tick or an
+       'online' event. An unbounded retry loop would burn battery all day. */
+    if (attempt < 4) {
+      attempt++;
+      setSyncStatus(`retrying sync (${attempt}/4)…`, 'var(--amber)');
+      clearTimeout(syncTimer);
+      syncTimer = setTimeout(flushSync, 1000 * 2 ** (attempt - 1));
+    } else {
+      attempt = 0;
+      describeIdle();
+    }
+  }
+}
+
+function queueSync(dates) {
+  markPending(dates);
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(flushSync, 600);   /* coalesce rapid ticks */
 }
 
 /* ---------- dates ---------- */
@@ -103,3 +159,25 @@ document.getElementById('nextM').addEventListener('click',()=>{calM++;if(calM>11
 /* ---------- init ---------- */
 renderScorecard();
 renderCalendar();
+
+(async () => {
+  if (!isConfigured()) return describeIdle();
+  try {
+    setSyncStatus('syncing…');
+    progress = mergeProgress(progress, await pull());
+    saveProgress(progress);
+    renderScorecard();
+    renderCalendar();
+    lastSyncAt = Date.now();
+  } catch {
+    /* Offline or unreachable — localStorage already rendered, so there is
+       nothing for the user to lose here. */
+  }
+  flushSync();
+})();
+
+window.addEventListener('online', flushSync);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && loadPending().length) flushSync();
+});
+setInterval(describeIdle, 60000);
