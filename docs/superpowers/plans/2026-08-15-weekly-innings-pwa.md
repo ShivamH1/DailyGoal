@@ -1724,7 +1724,7 @@ export function resolveNow(dayKey, minutes) {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test`
-Expected: PASS, 44 tests total, 0 failures. If the overlap test fails, the fix is in the data, not the assertion.
+Expected: PASS, 46 tests total, 0 failures. If the overlap test fails, the fix is in the data, not the assertion.
 
 - [ ] **Step 5: Commit**
 
@@ -2126,7 +2126,7 @@ Note `formatExamDates` assumes a single month per group, which holds for all thr
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test`
-Expected: PASS, 51 tests total, 0 failures.
+Expected: PASS, 53 tests total, 0 failures.
 
 - [ ] **Step 5: Give the fourth plate ids in `index.html`**
 
@@ -2483,7 +2483,7 @@ The month rendered as a scorebook page. In a real scorebook a dot ball means *fa
 - [ ] **Step 9: Verify nothing behavioural regressed**
 
 Run: `npm test`
-Expected: PASS, 51 tests, 0 failures — this task changes no logic, so any failure means you edited behaviour by accident.
+Expected: PASS, 53 tests, 0 failures — this task changes no logic, so any failure means you edited behaviour by accident.
 
 Run: `node --check app.js`
 Expected: exit 0.
@@ -2549,7 +2549,7 @@ In `sw.js`, add `'./schedule.js',` to `SHELL` (Task 10 could not precache it bec
 - [ ] **Step 2: Run the full test suite**
 
 Run: `npm test`
-Expected: PASS, 51 tests, 0 failures. Paste the actual summary line into the commit message body — do not claim a pass you have not seen.
+Expected: PASS, 53 tests, 0 failures. Paste the actual summary line into the commit message body — do not claim a pass you have not seen.
 
 - [ ] **Step 3: Complete the README**
 
