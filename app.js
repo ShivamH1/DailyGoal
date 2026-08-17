@@ -181,3 +181,13 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && loadPending().length) flushSync();
 });
 setInterval(describeIdle, 60000);
+
+/* ---------- service worker ---------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {
+      /* Registration fails over file:// and on some private modes. The app
+         works fine without it — only offline start-up is lost. */
+    });
+  });
+}
