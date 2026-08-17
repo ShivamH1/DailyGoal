@@ -50,7 +50,7 @@ test('pull requests only this user and returns a progress object', async () => {
     seen = { url, opts };
     return {
       ok: true,
-      json: async () => ([{ date: '2026-08-20', study: true, workout: true, sleep: false, note: null, updated_at: 'x' }]),
+      json: async () => ([{ date: '2026-08-20', study: true, workout: true, sleep: false, note: null, updated_at: '2026-08-20T12:00:00+00:00' }]),
     };
   };
   const p = await pull({ fetchImpl });
@@ -91,4 +91,11 @@ test('push with no dates makes no request at all', async () => {
   const fetchImpl = async () => { called = true; return { ok: true, text: async () => '' }; };
   await push({}, [], { fetchImpl });
   assert.equal(called, false);
+});
+
+test('fromRows canonicalises PostgREST timestamps to the client format', () => {
+  const fromPg = fromRows([{ date: '2026-08-20', study: true, workout: false, sleep: false, note: null, updated_at: '2026-08-20T12:00:00+00:00' }]);
+  const fromJs = fromRows([{ date: '2026-08-20', study: true, workout: false, sleep: false, note: null, updated_at: '2026-08-20T12:00:00.000Z' }]);
+  assert.equal(fromPg['2026-08-20'].u, fromJs['2026-08-20'].u);
+  assert.equal(fromPg['2026-08-20'].u, '2026-08-20T12:00:00.000Z');
 });

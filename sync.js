@@ -49,7 +49,10 @@ export function fromRows(rows) {
       w: r.workout ? 1 : 0,
       z: r.sleep ? 1 : 0,
       note: r.note || '',
-      u: r.updated_at,
+      /* PostgREST returns "…+00:00" while the client writes "…Z". mergeProgress
+         compares these as strings, so normalise on ingest rather than relying
+         on '+' happening to sort below '.' and every digit. */
+      u: new Date(r.updated_at).toISOString(),
     };
   }
   return out;
