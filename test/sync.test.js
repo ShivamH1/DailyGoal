@@ -50,7 +50,7 @@ test('pull requests only this user and returns a progress object', async () => {
     seen = { url, opts };
     return {
       ok: true,
-      json: async () => ([{ date: '2026-08-20', study: true, workout: true, sleep: false, note: null, updated_at: '2026-08-20T12:00:00+00:00' }]),
+      json: async () => ([{ date: '2026-08-20', study: true, workout: true, sleep: false, note: null, updated_at: 'x' }]),
     };
   };
   const p = await pull({ fetchImpl });
@@ -98,4 +98,17 @@ test('fromRows canonicalises PostgREST timestamps to the client format', () => {
   const fromJs = fromRows([{ date: '2026-08-20', study: true, workout: false, sleep: false, note: null, updated_at: '2026-08-20T12:00:00.000Z' }]);
   assert.equal(fromPg['2026-08-20'].u, fromJs['2026-08-20'].u);
   assert.equal(fromPg['2026-08-20'].u, '2026-08-20T12:00:00.000Z');
+});
+
+test('fromRows passes through a timestamp it cannot parse instead of throwing', () => {
+  let p;
+  assert.doesNotThrow(() => {
+    p = fromRows([{ date: '2026-08-20', study: true, workout: false, sleep: false, note: null, updated_at: 'x' }]);
+  });
+  assert.equal(p['2026-08-20'].u, 'x');
+});
+
+test('a missing timestamp becomes empty so the record loses a merge', () => {
+  const p = fromRows([{ date: '2026-08-20', study: true, workout: false, sleep: false, note: null, updated_at: null }]);
+  assert.equal(p['2026-08-20'].u, '');
 });

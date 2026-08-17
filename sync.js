@@ -41,6 +41,16 @@ export function toRow(date, rec = {}) {
   };
 }
 
+/* PostgREST returns "…+00:00" where the client writes "…Z", and mergeProgress
+   compares these as strings — so canonicalise on ingest. A row whose timestamp
+   will not parse is passed through untouched rather than thrown on: one bad row
+   must not abort the whole pull. Date.parse (not new Date) so that null becomes
+   '' rather than the epoch, matching how mergeProgress treats a missing `u`. */
+const canonicalTime = (v) => {
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? (v == null ? '' : String(v)) : new Date(t).toISOString();
+};
+
 export function fromRows(rows) {
   const out = {};
   for (const r of rows) {
@@ -49,10 +59,7 @@ export function fromRows(rows) {
       w: r.workout ? 1 : 0,
       z: r.sleep ? 1 : 0,
       note: r.note || '',
-      /* PostgREST returns "…+00:00" while the client writes "…Z". mergeProgress
-         compares these as strings, so normalise on ingest rather than relying
-         on '+' happening to sort below '.' and every digit. */
-      u: new Date(r.updated_at).toISOString(),
+      u: canonicalTime(r.updated_at),
     };
   }
   return out;
