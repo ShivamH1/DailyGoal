@@ -1,5 +1,5 @@
 import { loadProgress, saveProgress, loadPending, markPending, clearPending } from './storage.js';
-import { computeStreak, iso, mergeProgress, toCSV } from './progress.js';
+import { computeStreak, iso, mergeProgress, toCSV, weeklySummary, weekStart } from './progress.js';
 import { pull, push, isConfigured } from './sync.js';
 import { WEEK, DAY_KEYS, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
@@ -84,6 +84,7 @@ function commit(dates) {
     if (saveStatus.textContent === '✓ saved') setSaveStatus('');
   }, 2500);
   queueSync(dates);
+  renderWeek();
 }
 
 /* ---------- remote sync ---------- */
@@ -252,6 +253,27 @@ function renderExam() {
 
 renderExam();
 
+/* ---------- weekly summary ---------- */
+function renderWeek() {
+  const start = weekStart(todayISO());
+  const sum = weeklySummary(progress, start);
+  document.getElementById('weekStats').innerHTML = [
+    [`${sum.study}/5`, 'Study days'],
+    [`${sum.workout}/7`, 'Workouts'],
+    [`${sum.sleep}/7`, 'Slept by 11'],
+    [sum.bestStreak, 'Best streak'],
+  ].map(([n, cap]) => `<div class="week-stat"><b>${n}</b><span>${cap}</span></div>`).join('');
+
+  const notes = document.getElementById('weekNotes');
+  notes.innerHTML = sum.notes.length
+    ? sum.notes.map((n) => {
+        const label = new Date(n.date + 'T00:00:00')
+          .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' });
+        return `<li><span class="d">${label}</span>${n.note}</li>`;
+      }).join('')
+    : `<li class="empty">No notes yet this week — the week started ${start}.</li>`;
+}
+
 /* ---------- export ---------- */
 function download(filename, text, mime) {
   const url = URL.createObjectURL(new Blob([text], { type: mime }));
@@ -275,6 +297,7 @@ document.getElementById('exportCsv').addEventListener('click', () => {
 /* ---------- init ---------- */
 renderScorecard();
 renderCalendar();
+renderWeek();
 
 (async () => {
   if (!isConfigured()) return describeIdle();
@@ -284,6 +307,7 @@ renderCalendar();
     saveProgress(progress);
     renderScorecard();
     renderCalendar();
+    renderWeek();
     lastSyncAt = Date.now();
   } catch {
     /* Offline or unreachable — localStorage already rendered, so there is

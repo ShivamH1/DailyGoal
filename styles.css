@@ -165,3 +165,18 @@ footer{margin-top:56px;border-top:2px solid var(--line);padding:26px 0 40px;font
 .export button{background:var(--ink);border:1px solid var(--line);color:var(--chalk);border-radius:6px;padding:7px 12px;cursor:pointer;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
 .export button:hover{border-color:var(--muted)}
 .export button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+/* ===== WEEKLY SUMMARY ===== */
+.week{margin:48px 0 0;border-top:2px solid var(--line);padding:40px 0 8px}
+.week h3{font-size:clamp(1.3rem,3.5vw,1.8rem);font-weight:800;text-transform:uppercase;margin-bottom:22px}
+.week h3 span{color:var(--ball)}
+.week-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.week-stat{background:var(--ink);border:1px solid var(--line);border-radius:8px;padding:14px;text-align:center}
+.week-stat b{display:block;font-family:var(--mono);font-weight:700;font-size:1.6rem;color:var(--amber);line-height:1}
+.week-stat span{display:block;margin-top:6px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.week-notes{list-style:none;margin-top:20px}
+.week-notes li{padding:10px 0;border-bottom:1px dashed var(--line);font-size:.95rem}
+.week-notes li:last-child{border-bottom:none}
+.week-notes .d{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);margin-right:12px}
+.week-notes .empty{color:var(--muted);font-size:.9rem}
+@media (max-width:720px){.week-stats{grid-template-columns:repeat(2,1fr)}}
