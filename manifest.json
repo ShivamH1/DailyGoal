@@ -2,7 +2,7 @@
   "name": "Weekly Innings",
   "short_name": "Innings",
   "description": "Schedule and habit tracker — study, workout, sleep.",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

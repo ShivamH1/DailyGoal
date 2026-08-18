@@ -55,3 +55,15 @@ test('a write failure is swallowed rather than crashing a tick', () => {
   s.setItem = () => { throw new Error('QuotaExceededError'); };
   assert.doesNotThrow(() => saveProgress({ '2026-08-20': { s: 1 } }, s));
 });
+
+test('saveProgress reports the failure rather than only swallowing it', () => {
+  /* Quota, Lockdown Mode, an embedded context, storage switched off — the
+     caller has to be able to tell, or it shows "saved" over a lost tick. */
+  const s = fakeStore();
+  s.setItem = () => { throw new Error('SecurityError'); };
+  assert.equal(saveProgress({ '2026-08-20': { s: 1 } }, s), false);
+});
+
+test('a successful saveProgress reports true', () => {
+  assert.equal(saveProgress({ '2026-08-20': { s: 1 } }, fakeStore()), true);
+});

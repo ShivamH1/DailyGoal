@@ -5,6 +5,13 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, USER_ID } from './config.js';
 
 const TABLE = 'daily_progress';
 
+/* A captive portal or a dead-zone handoff leaves a request that never settles.
+   Without a deadline the init flush is sequenced behind a promise that never
+   resolves, and the queued ticks it exists to send stay queued forever. */
+const TIMEOUT_MS = 8000;
+const deadline = () => (typeof AbortSignal?.timeout === 'function'
+  ? { signal: AbortSignal.timeout(TIMEOUT_MS) } : {});
+
 /* The Supabase dashboard shows the project URL with /rest/v1/ already
    appended. We add that path ourselves, so leaving it produces
    /rest/v1//rest/v1/... and every request fails with PGRST125. Defended
@@ -67,7 +74,7 @@ export function fromRows(rows) {
 
 export async function pull({ fetchImpl = globalThis.fetch } = {}) {
   const url = `${BASE}/rest/v1/${TABLE}?select=*&user_id=eq.${USER_ID}`;
-  const res = await fetchImpl(url, { headers: headers() });
+  const res = await fetchImpl(url, { headers: headers(), ...deadline() });
   if (!res.ok) throw new Error(`pull failed: ${res.status}`);
   return fromRows(await res.json());
 }
@@ -79,6 +86,7 @@ export async function push(progress, dates, { fetchImpl = globalThis.fetch } = {
     method: 'POST',
     headers: headers({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
     body,
+    ...deadline(),
   });
   if (!res.ok) throw new Error(`push failed: ${res.status} ${await res.text()}`);
 }

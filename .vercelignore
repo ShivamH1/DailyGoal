@@ -1,0 +1,18 @@
+# Everything the deployed app does not need. outputDirectory is ".", so
+# anything uploaded is also served: the original prototype was live at a
+# guessable URL beside the fixed app.
+#
+# tools/ is deliberately NOT here. vercel.json's buildCommand runs
+# tools/make-config.mjs against the uploaded files, so excluding it would
+# break the build that generates config.js.
+test/
+docs/
+supabase/
+.superpowers/
+weekly-innings-tracker*.html
+weekly-innings-spec.md
+
+# Never uploaded: this holds the service_role key and the database password.
+.env
+.env.*
+.DS_Store

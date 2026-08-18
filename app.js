@@ -1,7 +1,7 @@
 import { loadProgress, saveProgress, loadPending, markPending, clearPending } from './storage.js';
 import { clearableDates, computeStreak, iso, mergeProgress, toCSV, weeklySummary, weekStart } from './progress.js';
 import { pull, push, isConfigured } from './sync.js';
-import { WEEK, DAY_KEYS, istNow, resolveNow } from './schedule.js';
+import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
 
 /* ---------- day panels ---------- */
@@ -58,9 +58,9 @@ function renderNow() {
 }
 
 renderNow();
-setInterval(renderNow, 60000);
+setInterval(() => { rolloverIfNeeded(); renderNow(); }, 60000);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') renderNow();
+  if (document.visibilityState === 'visible') { rolloverIfNeeded(); renderNow(); }
 });
 
 /* ---------- day tabs ---------- */
@@ -70,7 +70,7 @@ function showDay(d){
   panels.forEach(p=>p.classList.toggle('on',p.id==='p-'+d));
 }
 tabs.forEach(t=>t.addEventListener('click',()=>showDay(t.dataset.d)));
-showDay(['sun','mon','tue','wed','thu','fri','sat'][new Date().getDay()]);
+showDay(istNow().dayKey);
 
 /* ---------- progress store ---------- */
 let progress = loadProgress();
@@ -81,18 +81,23 @@ function setSaveStatus(text, color) {
   saveStatus.style.color = color || 'var(--twilight)';
 }
 
-/* Called after every mutation. The localStorage write is synchronous and
-   effectively cannot fail, so status goes straight to saved; Task 8 hangs the
-   remote queue off the same call. */
+/* Called after every mutation. The localStorage write is synchronous but it
+   can still fail — Lockdown Mode, an embedded context, storage switched off,
+   quota — and write() reports that. Saying "saved" when nothing was saved is
+   the original bug of this project, so the result is honoured here. The remote
+   queue is armed either way: the network tier may well still work. */
 function commit(dates) {
   for (const date of dates) {
     progress[date] = { ...progress[date], u: new Date().toISOString() };
   }
-  saveProgress(progress);
-  setSaveStatus('✓ saved', 'var(--linseed)');
-  setTimeout(() => {
-    if (saveStatus.textContent === '✓ saved') setSaveStatus('');
-  }, 2500);
+  if (saveProgress(progress)) {
+    setSaveStatus('✓ saved', 'var(--linseed)');
+    setTimeout(() => {
+      if (saveStatus.textContent === '✓ saved') setSaveStatus('');
+    }, 2500);
+  } else {
+    setSaveStatus('⚠ not saved', 'var(--leather)');
+  }
   queueSync(dates);
   renderWeek();
 }
@@ -103,6 +108,10 @@ let lastSyncAt = null;
 let syncTimer = null;
 let attempt = 0;
 let flushing = false;
+/* Set when a request fails, cleared when one succeeds. Without it a failed
+   pull with an empty queue falls through to setSyncStatus(''), which is
+   exactly what a healthy idle app looks like. */
+let offline = false;
 
 function setSyncStatus(text, color) {
   syncEl.textContent = text;
@@ -113,6 +122,7 @@ function describeIdle() {
   const pending = loadPending();
   if (!isConfigured()) return setSyncStatus('local only · sync not configured');
   if (pending.length) return setSyncStatus(`offline · ${pending.length} unsynced`, 'var(--linseed)');
+  if (offline) return setSyncStatus('offline · not synced', 'var(--linseed)');
   if (lastSyncAt) {
     const mins = Math.round((Date.now() - lastSyncAt) / 60000);
     return setSyncStatus(mins < 1 ? 'synced · just now' : `synced · ${mins} min ago`);
@@ -139,6 +149,7 @@ async function flushSync() {
     clearPending(clearableDates(dates, sent, progress));
     lastSyncAt = Date.now();
     attempt = 0;
+    offline = false;
     if (loadPending().length) armFlush();
     describeIdle();
   } catch {
@@ -151,6 +162,7 @@ async function flushSync() {
       syncTimer = setTimeout(flushSync, 1000 * 2 ** (attempt - 1));
     } else {
       attempt = 0;
+      offline = true;
       describeIdle();
     }
   } finally {
@@ -169,8 +181,26 @@ function queueSync(dates) {
 }
 
 /* ---------- dates ---------- */
-const todayISO = () => iso(new Date());
+const todayISO = () => istDateISO();
 let selDate=todayISO();
+let today=selDate;
+
+/* A backgrounded PWA crosses midnight easily — the 11 PM session routinely
+   does. Without this the banner rolls over while the scorecard still shows
+   yesterday, the streak recomputes against the new today, and the next tick
+   lands on the wrong date. */
+function rolloverIfNeeded() {
+  const now = todayISO();
+  if (now === today) return;
+  today = now;
+  selDate = now;
+  showDay(istNow().dayKey);
+  const [y, m] = now.split('-').map(Number);
+  calY = y; calM = m - 1;
+  renderScorecard();
+  renderCalendar();
+  renderWeek();
+}
 
 /* ---------- scorecard ---------- */
 const ticks={s:document.getElementById('t-s'),w:document.getElementById('t-w'),z:document.getElementById('t-z')};
@@ -229,7 +259,7 @@ function renderStreak() {
 
 /* ---------- calendar ---------- */
 let calY,calM;
-{const n=new Date();calY=n.getFullYear();calM=n.getMonth()}
+{const [y,m]=todayISO().split('-').map(Number);calY=y;calM=m-1}
 const grid=document.getElementById('calGrid'),mName=document.getElementById('mName');
 
 function renderCalendar(){
@@ -299,15 +329,33 @@ function renderWeek() {
   ].map(([n, cap]) =>
     `<div class="week-stat"><b class="t-title">${n}</b><span class="t-label">${cap}</span></div>`).join('');
 
+  /* The note is the one string on this page the user (or, given the no-auth
+     design, anyone with the URL and the anon key) authors. Through innerHTML
+     "can write a short string" becomes "can run script in this session", which
+     is well outside the accepted risk — so this list is built as text. The
+     schedule's &amp;/&rsquo; entities stay on innerHTML; those are ours. */
   const notes = document.getElementById('weekNotes');
-  notes.innerHTML = sum.notes.length
-    ? sum.notes.map((n) => {
-        const label = new Date(n.date + 'T00:00:00')
-          .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' });
-        return `<li class="ledger"><span class="when t-time">${label}</span>` +
-               `<span class="what t-note">${n.note}</span></li>`;
-      }).join('')
-    : `<li class="t-note">No notes yet this week — the week started ${start}.</li>`;
+  notes.textContent = '';
+  if (!sum.notes.length) {
+    const li = document.createElement('li');
+    li.className = 't-note';
+    li.textContent = `No notes yet this week — the week started ${start}.`;
+    notes.appendChild(li);
+    return;
+  }
+  for (const n of sum.notes) {
+    const li = document.createElement('li');
+    li.className = 'ledger';
+    const when = document.createElement('span');
+    when.className = 'when t-time';
+    when.textContent = new Date(n.date + 'T00:00:00')
+      .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' });
+    const what = document.createElement('span');
+    what.className = 'what t-note';
+    what.textContent = n.note;
+    li.append(when, what);
+    notes.appendChild(li);
+  }
 }
 
 /* ---------- export ---------- */
@@ -337,6 +385,10 @@ renderWeek();
 
 (async () => {
   if (!isConfigured()) return describeIdle();
+  /* The flush is not sequenced behind the pull. A pull that hangs must not
+     hold the queue hostage: a hung connection is precisely the case the queue
+     exists for. */
+  flushSync();
   try {
     setSyncStatus('syncing…');
     progress = mergeProgress(progress, await pull());
@@ -345,11 +397,14 @@ renderWeek();
     renderCalendar();
     renderWeek();
     lastSyncAt = Date.now();
+    offline = false;
   } catch {
     /* Offline or unreachable — localStorage already rendered, so there is
-       nothing for the user to lose here. */
+       nothing for the user to lose. The status line has to say so all the
+       same: blank reads as a healthy idle app. */
+    offline = true;
   }
-  flushSync();
+  if (!flushing) describeIdle();
 })();
 
 window.addEventListener('online', flushSync);

@@ -1,25 +1,41 @@
 /* Classic worker script — not a module, so no imports here.
    Bump CACHE when any shell file changes; activate purges older caches. */
-const CACHE = 'weekly-innings-v3';
+const CACHE = 'weekly-innings-v4';
 
+/* './' rather than './index.html': Vercel's cleanUrls 308-redirects
+   /index.html to /, addAll follows the redirect and stores a response with the
+   redirected flag set, and the spec makes it a network error to respondWith a
+   redirected response for a navigation. Cache-first means that would fire on
+   every launch, not only offline. '/' does not redirect. */
 const SHELL = [
   './',
-  './index.html',
   './styles.css',
   './app.js',
-  './config.js',
   './exams.js',
   './schedule.js',
   './storage.js',
   './sync.js',
   './progress.js',
+];
+
+/* Cached one at a time, because addAll is all-or-nothing and a single 404
+   would fail the install and leave the worker unactivated forever. config.js
+   is generated at build time and gitignored, so it is the realistic 404. */
+const EXTRAS = [
+  './config.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => c.addAll(SHELL)
+        .then(() => Promise.allSettled(EXTRAS.map((u) => c.add(u)))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -53,7 +69,8 @@ self.addEventListener('fetch', (e) => {
 
   e.respondWith(
     caches.match(e.request).then((hit) =>
-      hit || fetch(e.request).catch(() => caches.match('./index.html'))
+      hit || fetch(e.request).catch(() =>
+        (e.request.mode === 'navigate' ? caches.match('./') : Response.error()))
     )
   );
 });

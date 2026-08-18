@@ -131,6 +131,19 @@ export function istNow(date = new Date()) {
   };
 }
 
+/* The record key for "today" in IST. Every other "what time is it" decision
+   goes through Intl with this timeZone; the date a tick is filed under has to
+   as well, or the banner, the day tab and the scorecard can disagree without
+   showing it. */
+export function istDateISO(date = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(date).map((p) => [p.type, p.value])
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 export function resolveNow(dayKey, minutes) {
   const blocks = WEEK[dayKey].blocks;
   const current = blocks.find((b) => minutes >= b.start && minutes < b.end);
