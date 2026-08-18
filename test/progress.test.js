@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  iso, addDays, weekStart, computeStreak, mergeProgress, weeklySummary, toCSV
+  iso, addDays, weekStart, clearableDates, computeStreak, mergeProgress, weeklySummary, toCSV
 } from '../progress.js';
 
 test('iso formats local date parts, not UTC', () => {
@@ -99,4 +99,37 @@ test('CSV rows are sorted by date', () => {
   const p = { '2026-08-20': { s: 1 }, '2026-08-18': { s: 1 } };
   const rows = toCSV(p).trim().split('\n').slice(1);
   assert.match(rows[0], /^2026-08-18/);
+});
+
+test('a date untouched during the push is clearable', () => {
+  const sent = ['2026-08-20T10:00:00.000Z'];
+  const now = { '2026-08-20': { s: 1, u: '2026-08-20T10:00:00.000Z' } };
+  assert.deepEqual(clearableDates(['2026-08-20'], sent, now), ['2026-08-20']);
+});
+
+test('a date re-ticked mid-flight stays queued', () => {
+  /* The push body was serialised at 10:00; the workout tick landed at 10:00:30
+     while the request was still open. Clearing it by date would strand it. */
+  const sent = ['2026-08-20T10:00:00.000Z'];
+  const now = { '2026-08-20': { s: 1, w: 1, u: '2026-08-20T10:00:30.000Z' } };
+  assert.deepEqual(clearableDates(['2026-08-20'], sent, now), []);
+});
+
+test('a mixed batch clears only the dates that did not change', () => {
+  const dates = ['2026-08-18', '2026-08-19', '2026-08-20'];
+  const sent = ['a', 'b', 'c'];
+  const now = {
+    '2026-08-18': { u: 'a' },
+    '2026-08-19': { u: 'b2' },   // changed while in flight
+    '2026-08-20': { u: 'c' },
+  };
+  assert.deepEqual(clearableDates(dates, sent, now), ['2026-08-18', '2026-08-20']);
+});
+
+test('a date missing from the current progress is handled without throwing', () => {
+  let out;
+  assert.doesNotThrow(() => { out = clearableDates(['2026-08-20'], [undefined], {}); });
+  assert.deepEqual(out, ['2026-08-20']);
+  /* …and a record that has since gained a timestamp is not cleared. */
+  assert.deepEqual(clearableDates(['2026-08-20'], [undefined], { '2026-08-20': { u: 'z' } }), []);
 });

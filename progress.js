@@ -31,6 +31,14 @@ export function computeStreak(progress, todayIso) {
   return n;
 }
 
+/* Which queued dates a completed push may safely clear. A date whose record
+   changed while the push was in flight must stay queued: the body was
+   serialised before that change, so clearing it by date would strand the
+   newer value locally forever. */
+export function clearableDates(dates, sentStamps, progressNow) {
+  return dates.filter((d, i) => (progressNow[d] || {}).u === sentStamps[i]);
+}
+
 export function mergeProgress(local, remote) {
   const out = {};
   for (const date of new Set([...Object.keys(local), ...Object.keys(remote)])) {

@@ -1,5 +1,5 @@
 import { loadProgress, saveProgress, loadPending, markPending, clearPending } from './storage.js';
-import { computeStreak, iso, mergeProgress, toCSV, weeklySummary, weekStart } from './progress.js';
+import { clearableDates, computeStreak, iso, mergeProgress, toCSV, weeklySummary, weekStart } from './progress.js';
 import { pull, push, isConfigured } from './sync.js';
 import { WEEK, DAY_KEYS, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
@@ -102,6 +102,7 @@ const syncEl = document.getElementById('syncStatus');
 let lastSyncAt = null;
 let syncTimer = null;
 let attempt = 0;
+let flushing = false;
 
 function setSyncStatus(text, color) {
   syncEl.textContent = text;
@@ -121,14 +122,24 @@ function describeIdle() {
 
 async function flushSync() {
   if (!isConfigured()) return describeIdle();
+  /* 'online', visibilitychange and the debounce timer all call this with no
+     coordination. Two overlapping pushes would race the same way A1 did, so a
+     second caller re-arms the debounce instead of starting its own push. */
+  if (flushing) return armFlush();
   const dates = loadPending();
   if (!dates.length) return describeIdle();
+  flushing = true;
   setSyncStatus('syncing…');
   try {
+    /* push() serialises its body synchronously, so these are the exact values
+       the network sees. A date whose 'u' has moved on by the time we get back
+       was ticked mid-flight and must stay queued. */
+    const sent = dates.map((d) => (progress[d] || {}).u);
     await push(progress, dates);
-    clearPending(dates);
+    clearPending(clearableDates(dates, sent, progress));
     lastSyncAt = Date.now();
     attempt = 0;
+    if (loadPending().length) armFlush();
     describeIdle();
   } catch {
     /* Back off 1s, 2s, 4s, 8s, then stop and wait for the next tick or an
@@ -142,13 +153,19 @@ async function flushSync() {
       attempt = 0;
       describeIdle();
     }
+  } finally {
+    flushing = false;
   }
+}
+
+function armFlush() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(flushSync, 600);   /* coalesce rapid ticks */
 }
 
 function queueSync(dates) {
   markPending(dates);
-  clearTimeout(syncTimer);
-  syncTimer = setTimeout(flushSync, 600);   /* coalesce rapid ticks */
+  armFlush();
 }
 
 /* ---------- dates ---------- */
