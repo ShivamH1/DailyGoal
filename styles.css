@@ -152,3 +152,10 @@ footer{margin-top:56px;border-top:2px solid var(--line);padding:26px 0 40px;font
 .now.next{border-left-color:var(--muted)}
 .row.is-now{background:rgba(245,184,65,.07);border-radius:6px}
 .row.is-now .time{color:var(--amber)}
+
+/* ===== DAILY NOTE ===== */
+.note-row{display:block;margin-top:14px}
+.note-lbl{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.note-input{width:100%;background:var(--pitch);border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:var(--chalk);font-family:var(--disp);font-size:.95rem}
+.note-input::placeholder{color:var(--muted);opacity:.7}
+.note-input:focus-visible{outline:2px solid var(--amber);outline-offset:2px;border-color:var(--amber)}

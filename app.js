@@ -147,6 +147,29 @@ let selDate=todayISO();
 const ticks={s:document.getElementById('t-s'),w:document.getElementById('t-w'),z:document.getElementById('t-z')};
 const scDate=document.getElementById('scDate'),backBtn=document.getElementById('backToday');
 
+/* ---------- daily note ---------- */
+const noteInput = document.getElementById('noteInput');
+let noteTimer = null;
+
+noteInput.addEventListener('input', () => {
+  clearTimeout(noteTimer);
+  /* Same 600 ms coalescing as ticks — one write per pause, not per keystroke. */
+  noteTimer = setTimeout(() => {
+    const rec = progress[selDate] || (progress[selDate] = {});
+    rec.note = noteInput.value.trim();
+    commit([selDate]);
+  }, 600);
+});
+
+noteInput.addEventListener('blur', () => {
+  clearTimeout(noteTimer);
+  const rec = progress[selDate] || (progress[selDate] = {});
+  if ((rec.note || '') !== noteInput.value.trim()) {
+    rec.note = noteInput.value.trim();
+    commit([selDate]);
+  }
+});
+
 function renderScorecard(){
   const rec=progress[selDate]||{};
   Object.entries(ticks).forEach(([k,el])=>el.classList.toggle('done',!!rec[k]));
@@ -154,6 +177,7 @@ function renderScorecard(){
   const isToday=selDate===todayISO();
   scDate.textContent=(isToday?'Today · ':'')+d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
   backBtn.style.display=isToday?'none':'inline';
+  noteInput.value = rec.note || '';
   renderStreak();
 }
 Object.entries(ticks).forEach(([k,el])=>{
