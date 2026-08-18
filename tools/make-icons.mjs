@@ -1,10 +1,10 @@
-/* Generates the scoreboard icons: amber digits on pitch green.
+/* Generates the scoreboard icons: linseed digits on pitch green.
    Run: node tools/make-icons.mjs   (no dependencies) */
 import { deflateSync, crc32 } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
-const PITCH = [0x16, 0x35, 0x2a];
-const AMBER = [0xf5, 0xb8, 0x41];
+const PITCH = [0x10, 0x26, 0x1f];   /* --field  #10261F */
+const AMBER = [0xe2, 0xa3, 0x2b];   /* --linseed #E2A32B */
 
 /* 5x7 glyphs, one string row per line, '#' = lit pixel. */
 const GLYPHS = {
@@ -46,7 +46,9 @@ function png(size, pixels) {
 
 function render(size, text) {
   const cols = text.length * 6 - 1;          // 5 wide + 1 gap, no trailing gap
-  const scale = Math.floor((size * 0.55) / cols);
+  /* 40% of the canvas keeps the glyphs inside the 80%-diameter safe circle
+     that maskable icons are cropped to on Android. */
+  const scale = Math.floor((size * 0.40) / cols);
   const w = cols * scale;
   const h = 7 * scale;
   const x0 = Math.floor((size - w) / 2);
