@@ -24,7 +24,7 @@ const evening = (label, detail, effort) =>
 export const WEEK = {
   mon: {
     title: 'Monday', tag: 'Consolidation day',
-    note: "Replay the weekend's lectures across all four subjects while they're fresh. Decide which topics Tue–Fri mornings will cover.",
+    note: 'Replay the weekend&rsquo;s lectures across all four subjects while they&rsquo;re fresh. Decide which topics Tue–Fri mornings will cover.',
     blocks: [
       { ...wake, detail: 'No phone for the first 15 minutes' },
       { ...study('All subjects', 'Consolidate Sat/Sun classes · plan the week&rsquo;s topics'), label: 'Study — weekend review' },
@@ -63,7 +63,7 @@ export const WEEK = {
   },
   thu: {
     title: 'Thursday', tag: 'Power play',
-    note: "Deep Learning builds directly on Tuesday's maths and Wednesday's ML — that's why it sits here. Last hard workout of the week; the load tapers from tomorrow.",
+    note: 'Deep Learning builds directly on Tuesday&rsquo;s maths and Wednesday&rsquo;s ML — that&rsquo;s why it sits here. Last hard workout of the week; the load tapers from tomorrow.',
     blocks: [
       wake,
       study('Deep Learning', 'Theory + code · implement small pieces in Python'),
@@ -74,7 +74,7 @@ export const WEEK = {
   },
   fri: {
     title: 'Friday', tag: 'Taper &amp; recover',
-    note: "Statistical Methods closes the study week. Easy walk plus stretching in the evening — you want loose hamstrings, not sore ones, for tomorrow's match.",
+    note: 'Statistical Methods closes the study week. Easy walk plus stretching in the evening — you want loose hamstrings, not sore ones, for tomorrow&rsquo;s match.',
     blocks: [
       wake,
       study('Statistical Methods', 'Distributions, inference, hypothesis testing · flag doubts for weekend classes'),
@@ -92,7 +92,7 @@ export const WEEK = {
       { time: '7:30', start: 450, end: 465, label: 'Wake up — slightly later', detail: 'Optional 20 min mobility to loosen up', lane: 'rest' },
       { time: 'Morning', start: 540, end: 780, label: 'BITS WILP contact classes', subject: 'Per timetable',
         detail: 'Attend live · ask the doubts flagged on Friday', lane: 'study' },
-      { time: '1:00 – 2:00', start: 780, end: 840, label: 'Lunch', detail: "Proper meal + hydrate — you'll sweat it out at 3:30", lane: 'rest' },
+      { time: '1:00 – 2:00', start: 780, end: 840, label: 'Lunch', detail: 'Proper meal + hydrate — you&rsquo;ll sweat it out at 3:30', lane: 'rest' },
       { time: '2:00 – 3:00', start: 840, end: 900, label: 'Nap', detail: '', lane: 'rest' },
       { time: '3:30 – 7:30', start: 930, end: 1170, label: 'Cricket match', effort: { text: 'Match', cls: 'hard' },
         detail: 'This is the workout — tick it on the scorecard', lane: 'cricket' },
@@ -103,7 +103,7 @@ export const WEEK = {
   },
   sun: {
     title: 'Sunday', tag: 'Match day · Assignments',
-    note: "Class or assignments in the morning — rotate the assignment subject by whatever's due next. The day ends when the match ends.",
+    note: 'Class or assignments in the morning — rotate the assignment subject by whatever&rsquo;s due next. The day ends when the match ends.',
     blocks: [
       { time: '7:30', start: 450, end: 465, label: 'Wake up', detail: '', lane: 'rest' },
       { time: 'Morning', start: 540, end: 780, label: 'Class — or assignment block (2 hrs)', subject: 'Rotating',
