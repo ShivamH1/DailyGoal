@@ -6,7 +6,9 @@ import { WEEK, DAY_KEYS, istNow, resolveNow } from './schedule.js';
 /* ---------- day panels ---------- */
 function rowHTML(dayKey, block, i) {
   const subj = block.subject ? `<span class="subj">${block.subject}</span>` : '';
-  const eff = block.effort ? `<span class="effort ${block.effort.cls}">${block.effort.text}</span>` : '';
+  const eff = block.effort
+    ? `<span class="effort${block.effort.cls ? ' ' + block.effort.cls : ''}">${block.effort.text}</span>`
+    : '';
   const detail = block.detail ? `<em>${block.detail}</em>` : '';
   return `<div class="row" data-day="${dayKey}" data-i="${i}">` +
          `<div class="time">${block.time}</div>` +
