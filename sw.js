@@ -1,6 +1,6 @@
 /* Classic worker script — not a module, so no imports here.
    Bump CACHE when any shell file changes; activate purges older caches. */
-const CACHE = 'weekly-innings-v2';
+const CACHE = 'weekly-innings-v3';
 
 const SHELL = [
   './',
@@ -9,6 +9,7 @@ const SHELL = [
   './app.js',
   './config.js',
   './exams.js',
+  './schedule.js',
   './storage.js',
   './sync.js',
   './progress.js',
