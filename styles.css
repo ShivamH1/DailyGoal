@@ -18,7 +18,8 @@
   --crease:#17352B;     /* raised card surface */
   --chalk:#ECE7D9;      /* warm off-white, primary text */
   --linseed:#E2A32B;    /* accent: oiled-willow amber, duller than neon on purpose */
-  --leather:#A33F2B;    /* ball red: the workout mark and the streak count */
+  --leather:#CA4E35;    /* ball red: the workout channel only, never ink.
+                           3.53:1 on --field, clearing the 3:1 graphics floor. */
   --twilight:#87A093;   /* secondary text, green-cast so the page reads tonal */
   --rule:rgba(135,160,147,.22);
 
@@ -29,7 +30,9 @@
   --lane-work:var(--twilight);
   --lane-fit:var(--leather);
   --lane-cricket:var(--chalk);
-  --lane-rest:rgba(135,160,147,.45);   /* half twilight: present, never loud */
+  --lane-rest:rgba(135,160,147,.65);   /* the lowest step that still clears the
+                                          3:1 graphics floor (3.20:1), so rest
+                                          stays the quietest lane on the page */
 
   /* Type */
   --ui:'Archivo',system-ui,sans-serif;
@@ -144,11 +147,10 @@ main > section > h2{margin-bottom:var(--s4)}
 .note-input::placeholder{color:var(--twilight)}
 .note-input:focus-visible{border-color:var(--linseed)}
 
-/* The streak is the score. Red on whites — the one place --chalk is a ground
-   rather than ink, and the only pairing where --leather clears AA (5.15:1). */
+/* The streak is the score, and it is counted in amber because it is the sum of
+   the amber days on the strip. Red would read as a warning. */
 .streak{display:flex;align-items:center;gap:var(--s4);margin-top:var(--s5)}
-.streak b{background:var(--chalk);color:var(--leather);border-radius:var(--s2);
-  padding:var(--s2) var(--s3);display:inline-block}
+.streak b{color:var(--linseed)}
 
 .sc-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:var(--s2) var(--s4);margin-top:var(--s5)}
 .sc-foot .status{display:flex;gap:var(--s4)}
