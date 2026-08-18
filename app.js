@@ -1,6 +1,28 @@
 import { loadProgress, saveProgress, loadPending, markPending, clearPending } from './storage.js';
 import { computeStreak, iso, mergeProgress } from './progress.js';
 import { pull, push, isConfigured } from './sync.js';
+import { WEEK, DAY_KEYS, istNow, resolveNow } from './schedule.js';
+
+/* ---------- day panels ---------- */
+function rowHTML(dayKey, block, i) {
+  const subj = block.subject ? `<span class="subj">${block.subject}</span>` : '';
+  const eff = block.effort ? `<span class="effort ${block.effort.cls}">${block.effort.text}</span>` : '';
+  const detail = block.detail ? `<em>${block.detail}</em>` : '';
+  return `<div class="row" data-day="${dayKey}" data-i="${i}">` +
+         `<div class="time">${block.time}</div>` +
+         `<div class="bar b-${block.lane}"></div>` +
+         `<div class="what"><strong>${block.label}${subj}${eff}</strong>${detail}</div></div>`;
+}
+
+function renderDay(dayKey) {
+  const day = WEEK[dayKey];
+  document.getElementById('p-' + dayKey).innerHTML =
+    `<div class="day-head"><h2>${day.title}</h2><span class="tag">${day.tag}</span></div>` +
+    `<p class="day-note">${day.note}</p>` +
+    day.blocks.map((b, i) => rowHTML(dayKey, b, i)).join('');
+}
+
+DAY_KEYS.forEach(renderDay);
 
 /* ---------- day tabs ---------- */
 const tabs=document.querySelectorAll('.tab'),panels=document.querySelectorAll('.panel');
