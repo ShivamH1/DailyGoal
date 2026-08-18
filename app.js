@@ -1,5 +1,5 @@
 import { loadProgress, saveProgress, loadPending, markPending, clearPending } from './storage.js';
-import { computeStreak, iso, mergeProgress } from './progress.js';
+import { computeStreak, iso, mergeProgress, toCSV } from './progress.js';
 import { pull, push, isConfigured } from './sync.js';
 import { WEEK, DAY_KEYS, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
@@ -251,6 +251,26 @@ function renderExam() {
 }
 
 renderExam();
+
+/* ---------- export ---------- */
+function download(filename, text, mime) {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  /* Revoke on the next tick — revoking synchronously can cancel the download
+     on some mobile browsers. */
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+document.getElementById('exportJson').addEventListener('click', () => {
+  download(`weekly-innings-${todayISO()}.json`, JSON.stringify(progress, null, 2), 'application/json');
+});
+
+document.getElementById('exportCsv').addEventListener('click', () => {
+  download(`weekly-innings-${todayISO()}.csv`, toCSV(progress), 'text/csv');
+});
 
 /* ---------- init ---------- */
 renderScorecard();
