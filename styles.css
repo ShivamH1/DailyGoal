@@ -21,7 +21,8 @@
   --leather:#CA4E35;    /* ball red: the workout channel only, never ink.
                            3.53:1 on --field, clearing the 3:1 graphics floor. */
   --twilight:#87A093;   /* secondary text, green-cast so the page reads tonal */
-  --rule:rgba(135,160,147,.22);   /* dividers only: the scorebook hairlines */
+  --rule:rgba(135,160,147,.22);   /* the season-strip hairlines, and nothing
+                                     else on the page */
   --edge:#6C897A;       /* the boundary that identifies an interactive component,
                            and the tick's unchecked-state indicator. Held to the
                            3:1 graphics floor: 3.48:1 on --crease, 4.17:1 on
@@ -100,6 +101,18 @@ button:focus-visible,input:focus-visible,a:focus-visible{
 .t-body{font-family:var(--prose);font-size:15.5px;line-height:1.55}
 .t-note{font-family:var(--prose);font-size:14px;line-height:1.5;color:var(--twilight)}
 
+/* Weight is assigned per element, never on .t-body itself: the role is also the
+   voice for prose, and prose stays at 400. Every one of these was previously
+   relying on a UA default (h1/h2/b/strong) or, in the ticks' case, on nothing at
+   all — a <span> inherits 400, which left the page's three primary controls
+   lighter than its paragraphs. 600 is the ceiling of the loaded wght axis. */
+.sc-head h1,
+main > section > h2,
+.rule b,
+.tick .lbl,
+.row .what strong,
+.now .what-now{font-weight:600}
+
 /* --- 4 · The ledger gutter ----------------------------------------------- */
 /* One structural device: a fixed left column carrying WHEN. Used by the NOW
    strip, every timeline row, and the week's note list. The coloured lane is a
@@ -107,14 +120,17 @@ button:focus-visible,input:focus-visible,a:focus-visible{
 .ledger{display:grid;grid-template-columns:var(--gutter) 1fr;gap:0 var(--s4);align-items:start}
 .ledger > .when{text-align:right;padding-top:2px}
 .when span{display:block;white-space:nowrap}
-.ledger > .what{min-width:0;border-left:2px solid var(--lane, var(--rule));padding-left:var(--s4)}
+/* The lane bar is drawn only where there is a lane. A ledger row without one
+   (the week's notes) keeps the 2px so the text column still aligns, but draws
+   nothing — the same reason the Match-rule cards lost their bar. */
+.ledger > .what{min-width:0;border-left:2px solid var(--lane, transparent);padding-left:var(--s4)}
 
 /* --- 5 · Components ------------------------------------------------------ */
 
 /* NOW strip — the first thing on the page. */
 .now{padding-bottom:var(--s6)}
 .now .what{--lane:var(--linseed)}
-.now.next .what{--lane:var(--rule)}
+.now.next .what{--lane:var(--edge)}
 .now .state{display:block;color:var(--linseed)}
 .now.next .state{color:var(--twilight)}
 .now .what-now{display:block;margin-top:var(--s1)}
