@@ -177,7 +177,11 @@ function renderScorecard(){
   const isToday=selDate===todayISO();
   scDate.textContent=(isToday?'Today · ':'')+d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
   backBtn.style.display=isToday?'none':'inline';
-  noteInput.value = rec.note || '';
+  /* Never clobber what the user is actively typing: the init pull() resolves
+     asynchronously and re-renders, which would otherwise wipe an in-progress
+     note. Switching days still swaps the note, because clicking a calendar
+     cell moves focus off the input first. */
+  if (document.activeElement !== noteInput) noteInput.value = rec.note || '';
   renderStreak();
 }
 Object.entries(ticks).forEach(([k,el])=>{
