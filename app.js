@@ -100,7 +100,7 @@ function commit(dates) {
       if (saveStatus.textContent === '✓ saved') setSaveStatus('');
     }, 2500);
   } else {
-    setSaveStatus('⚠ not saved', 'var(--leather)');
+    setSaveStatus('⚠ not saved', 'var(--linseed)');
   }
   queueSync(dates);
   renderWeek();
@@ -201,14 +201,25 @@ let today=selDate;
 function rolloverIfNeeded() {
   const now = todayISO();
   if (now === today) return;
+  const wasOnToday = selDate === today;
   today = now;
-  selDate = now;
   showDay(istNow().dayKey);
-  const [y, m] = now.split('-').map(Number);
-  calY = y; calM = m - 1;
+  /* selDate only follows today forward if the user was actually sitting on
+     today when it happened, and isn't mid-note. Otherwise a deliberate look
+     at a past day (or a past month) gets yanked forward with no warning, and
+     worse, a note started before midnight — which renderScorecard leaves
+     alone while noteInput has focus — would have its next debounce/blur
+     write yesterday's half-typed text into today's record. Leaving selDate
+     put keeps the note filed under the day it was started on. */
+  if (wasOnToday && document.activeElement !== noteInput) {
+    selDate = now;
+    const [y, m] = now.split('-').map(Number);
+    calY = y; calM = m - 1;
+  }
   renderScorecard();
   renderCalendar();
   renderWeek();
+  renderExam();
 }
 
 /* ---------- scorecard ---------- */
@@ -404,7 +415,13 @@ renderWeek();
   if (!isConfigured()) return describeIdle();
   /* The flush is not sequenced behind the pull. A pull that hangs must not
      hold the queue hostage: a hung connection is precisely the case the queue
-     exists for. */
+     exists for. Trade-off: a queued row can now go out before the merge below
+     has a chance to fold in a newer remote write, so a stale local row can
+     briefly clobber it. This mostly self-heals — the merge updates
+     progress[d].u, which keeps the date in clearableDates so it gets re-pushed
+     with the winning value — but not if the pull itself fails, in which case
+     the stale push stands until the next local edit. Deliberate; a sequenced
+     pull-then-flush would be safer here but reintroduces the hang risk. */
   flushSync();
   try {
     setSyncStatus('syncing…');
