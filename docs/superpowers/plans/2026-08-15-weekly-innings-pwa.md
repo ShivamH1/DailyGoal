@@ -2480,7 +2480,13 @@ The Task 9 icons use the old amber `#F5B841` on `#16352A` and centre their glyph
 - Reduce the glyph block to **40% of the canvas width** and keep it centred, which places it inside the 80%-diameter safe circle every maskable spec assumes.
 - Regenerate: `node tools/make-icons.mjs`, and confirm all three files still report their declared dimensions (192, 512, 180).
 
-- [ ] **Step 9: Quality floor**
+- [ ] **Step 9: Normalise typographic apostrophes**
+
+`schedule.js` currently mixes straight `'` with `&rsquo;` — three detail strings use the entity and the rest do not, an inconsistency introduced when the schedule data was authored. Source Serif 4 sets a proper right single quote well, so make them all `&rsquo;` across every `note` and `detail` string in `schedule.js`. Check the day notes too, not just the details: `weekend's`, `That's why`, `whatever's`, `it's`.
+
+Run `grep -n "'" schedule.js` afterwards and confirm the only remaining straight quotes are JavaScript string delimiters.
+
+- [ ] **Step 10: Quality floor**
 
 - Single column, mobile-first; verify at 380 px with no horizontal scrolling anywhere.
 - Visible keyboard focus on every interactive element: `outline:2px solid var(--linseed);outline-offset:2px`. Ticks, tabs, calendar cells, note input, export buttons.
@@ -2488,7 +2494,7 @@ The Task 9 icons use the old amber `#F5B841` on `#16352A` and centre their glyph
 - Contrast: `--chalk` on `--field` and `--twilight` on `--field` must both clear WCAG AA for their sizes. Check `--twilight` at 11 px specifically — if it fails, lighten the token rather than enlarging the text.
 - No `!important`. No selector fighting: the prototype's `.section` versus `.cta` style of specificity collision is what this rewrite exists to remove.
 
-- [ ] **Step 10: Verify nothing behavioural regressed**
+- [ ] **Step 11: Verify nothing behavioural regressed**
 
 Run: `npm test`
 Expected: PASS, 53 tests, 0 failures — this task changes no logic, so any failure means you edited behaviour by accident.
@@ -2498,7 +2504,7 @@ Expected: exit 0.
 
 Then confirm by reading `app.js` that every function kept its name and contract: `commit`, `renderScorecard`, `renderCalendar`, `renderStreak`, `renderNow`, `renderWeek`, `renderExam`, `flushSync`, `queueSync`, `describeIdle`, `download`.
 
-- [ ] **Step 11: Commit in four parts**
+- [ ] **Step 12: Commit in four parts**
 
 ```bash
 git add index.html styles.css
