@@ -16,7 +16,7 @@ Then open `http://localhost:8080`. Opening `index.html` directly via `file://` w
 npm test
 ```
 
-53 tests, 0 failures, across `schedule.js`, `storage.js`, `progress.js`, `sync.js`, and `exams.js`.
+64 tests, 0 failures, across `schedule.js`, `storage.js`, `progress.js`, `sync.js`, and `exams.js`.
 
 ## Supabase setup
 
@@ -84,6 +84,12 @@ npx vercel --prod
 Accept the defaults; when asked for the project directory, choose the repo
 root.
 
+`outputDirectory` is `.`, so everything uploaded is also served.
+`.vercelignore` keeps the tests, the docs, the SQL, and the original
+prototype out of the deployment — but deliberately keeps `tools/`, because
+the build command (`node tools/make-config.mjs`) runs against the uploaded
+files and would fail without it.
+
 ## Changing the schedule
 
 `schedule.js` is the single source of truth for the week. It exports the
@@ -111,4 +117,7 @@ been run interactively:
 - [ ] Keyboard-only pass: Tab through ticks, note input, tabs, calendar
       cells, export buttons. Expected: a visible amber focus ring on each.
 - [ ] macOS System Settings → Accessibility → Reduce Motion on, then
-      reload. Expected: no panel transition animation.
+      reload. Expected: tapping a habit fills its box with no check-draw
+      animation, and tapping a calendar cell jumps the page to the scorecard
+      instead of scrolling smoothly to it. Those two are the only motion in
+      the app — panels swap with `display`, and never animated.

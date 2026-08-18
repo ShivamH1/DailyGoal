@@ -19,6 +19,15 @@ test('weekStart returns Monday for any day of that week', () => {
   assert.equal(weekStart('2026-08-23'), '2026-08-17'); // Sun -> that Mon
 });
 
+test('weekStart walks a Sunday back across a month boundary', () => {
+  /* The day === 0 ? -6 branch is the whole of weeklySummary's week, and a
+     Sunday landing on the 1st or 2nd is the only time it leaves the month. */
+  assert.equal(weekStart('2026-02-01'), '2026-01-26'); // Sun 1st -> prev Mon
+  assert.equal(weekStart('2026-11-01'), '2026-10-26'); // Sun 1st, 31-day month
+  assert.equal(weekStart('2026-08-02'), '2026-07-27'); // Sun 2nd
+  assert.equal(weekStart('2026-03-01'), '2026-02-23'); // Sun 1st, out of Feb
+});
+
 test('streak counts back from today when today is complete', () => {
   const p = {
     '2026-08-20': { s: 1, w: 1 },
@@ -132,4 +141,16 @@ test('a date missing from the current progress is handled without throwing', () 
   assert.deepEqual(out, ['2026-08-20']);
   /* …and a record that has since gained a timestamp is not cleared. */
   assert.deepEqual(clearableDates(['2026-08-20'], [undefined], { '2026-08-20': { u: 'z' } }), []);
+});
+
+test('CSV quotes a note containing a newline', () => {
+  /* csvField tests for /[",\n]/ but only the quote and the comma were ever
+     asserted. An unquoted newline ends the row early and shifts every column
+     after it — and the note column is writable from anywhere by design. */
+  const p = { '2026-08-20': { s: 1, w: 1, z: 0, note: 'line one\nline two' } };
+  const lines = toCSV(p).trim().split('\n');
+  assert.equal(lines.length, 3);          // header + the row, split by its own newline
+  assert.equal(lines[1], '2026-08-20,1,1,0,"line one');
+  assert.equal(lines[2], 'line two",');
+  assert.match(toCSV(p), /"line one\nline two"/);
 });

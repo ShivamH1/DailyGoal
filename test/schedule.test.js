@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { WEEK, DAY_KEYS, istNow, resolveNow } from '../schedule.js';
+import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from '../schedule.js';
 
 test('every day has blocks in ascending, non-overlapping order', () => {
   for (const key of DAY_KEYS) {
@@ -81,4 +81,33 @@ test('wednesday is the only weekday with two study blocks', () => {
   const count = (k) => WEEK[k].blocks.filter((b) => b.lane === 'study').length;
   assert.equal(count('wed'), 2);
   for (const k of ['mon', 'tue', 'thu', 'fri']) assert.equal(count(k), 1);
+});
+
+test('saturday resolves the gap between the match and dinner', () => {
+  const r = resolveNow('sat', 1185);          // 19:45 — match over at 19:30
+  assert.equal(r.state, 'next');
+  assert.equal(r.dayKey, 'sat');
+  assert.equal(r.block.start, 1200);
+  assert.match(r.block.label, /Dinner/);
+});
+
+test('sunday puts the lights out an hour before saturday does', () => {
+  /* The differing weekend shapes: at 22:30 Saturday is still free time,
+     Sunday has already started winding down for a 6:30 Monday. */
+  const sun = resolveNow('sun', 1350);        // 22:30
+  assert.equal(sun.state, 'now');
+  assert.match(sun.block.label, /Lights out/);
+  const sat = resolveNow('sat', 1350);
+  assert.equal(sat.state, 'now');
+  assert.match(sat.block.label, /Completely free/);
+  assert.equal(resolveNow('sat', 1395).block.label, 'Lights out');   // 23:15
+});
+
+test('istDateISO files a tick under the Kolkata date, not the device one', () => {
+  // 20:00Z on the 19th is already 01:30 on the 20th in IST.
+  assert.equal(istDateISO(new Date('2026-08-19T20:00:00Z')), '2026-08-20');
+  // 18:29Z on the 20th is 23:59 IST, still the 20th.
+  assert.equal(istDateISO(new Date('2026-08-20T18:29:00Z')), '2026-08-20');
+  // …one minute later it is the 21st in Pune while UTC is still on the 20th.
+  assert.equal(istDateISO(new Date('2026-08-20T18:30:00Z')), '2026-08-21');
 });

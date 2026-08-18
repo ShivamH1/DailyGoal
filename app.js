@@ -1,5 +1,5 @@
 import { loadProgress, saveProgress, loadPending, markPending, clearPending } from './storage.js';
-import { clearableDates, computeStreak, iso, mergeProgress, toCSV, weeklySummary, weekStart } from './progress.js';
+import { clearableDates, computeStreak, mergeProgress, toCSV, weeklySummary, weekStart } from './progress.js';
 import { pull, push, isConfigured } from './sync.js';
 import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
@@ -36,9 +36,17 @@ function renderDay(dayKey) {
 DAY_KEYS.forEach(renderDay);
 
 /* ---------- NOW ---------- */
+let nowKey = '';
 function renderNow() {
   const { dayKey, minutes } = istNow();
   const { state, dayKey: blockDay, block } = resolveNow(dayKey, minutes);
+
+  /* The banner is an aria-live region. Rewriting it every 60 seconds makes
+     VoiceOver announce the same sentence once a minute all day, so the DOM is
+     only touched when the sentence actually changes. */
+  const key = `${state}|${dayKey}|${blockDay}|${block.start}`;
+  if (key === nowKey) return;
+  nowKey = key;
 
   const label = block.subject ? `${block.label} — ${block.subject}` : block.label;
   const when = state === 'now' ? block.time : block.time.split(' – ')[0];
@@ -58,15 +66,11 @@ function renderNow() {
 }
 
 renderNow();
-setInterval(() => { rolloverIfNeeded(); renderNow(); }, 60000);
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { rolloverIfNeeded(); renderNow(); }
-});
 
 /* ---------- day tabs ---------- */
 const tabs=document.querySelectorAll('.tab'),panels=document.querySelectorAll('.panel');
 function showDay(d){
-  tabs.forEach(t=>{const on=t.dataset.d===d;t.classList.toggle('on',on);t.setAttribute('aria-selected',on)});
+  tabs.forEach(t=>{const on=t.dataset.d===d;t.classList.toggle('on',on);t.setAttribute('aria-pressed',on)});
   panels.forEach(p=>p.classList.toggle('on',p.id==='p-'+d));
 }
 tabs.forEach(t=>t.addEventListener('click',()=>showDay(t.dataset.d)));
@@ -121,8 +125,13 @@ function setSyncStatus(text, color) {
 function describeIdle() {
   const pending = loadPending();
   if (!isConfigured()) return setSyncStatus('local only · sync not configured');
-  if (pending.length) return setSyncStatus(`offline · ${pending.length} unsynced`, 'var(--linseed)');
-  if (offline) return setSyncStatus('offline · not synced', 'var(--linseed)');
+  /* Queued and failed are different states. During the 600 ms debounce, or
+     with a push in flight on a perfectly good connection, there is pending
+     work and nothing is wrong — saying "offline" there is just false. */
+  if (offline) return setSyncStatus(
+    pending.length ? `offline · ${pending.length} unsynced` : 'offline · not synced',
+    'var(--linseed)');
+  if (pending.length) return setSyncStatus(`queued · ${pending.length}`);
   if (lastSyncAt) {
     const mins = Math.round((Date.now() - lastSyncAt) / 60000);
     return setSyncStatus(mins < 1 ? 'synced · just now' : `synced · ${mins} min ago`);
@@ -222,11 +231,13 @@ noteInput.addEventListener('input', () => {
 
 noteInput.addEventListener('blur', () => {
   clearTimeout(noteTimer);
+  const value = noteInput.value.trim();
+  /* Read before creating: blurring an untouched input used to leave an empty
+     record behind, which a later save persisted and both exports listed. */
+  if ((progress[selDate]?.note || '') === value) return;
   const rec = progress[selDate] || (progress[selDate] = {});
-  if ((rec.note || '') !== noteInput.value.trim()) {
-    rec.note = noteInput.value.trim();
-    commit([selDate]);
-  }
+  rec.note = value;
+  commit([selDate]);
 });
 
 function renderScorecard(){
@@ -254,7 +265,7 @@ Object.entries(ticks).forEach(([k,el])=>{
 backBtn.addEventListener('click',()=>{selDate=todayISO();renderScorecard();renderCalendar()});
 
 function renderStreak() {
-  document.getElementById('streak').textContent = computeStreak(progress, iso(new Date()));
+  document.getElementById('streak').textContent = computeStreak(progress, todayISO());
 }
 
 /* ---------- calendar ---------- */
@@ -292,7 +303,9 @@ function renderCalendar(){
     c.innerHTML=`<span class="dnum t-time">${d}</span><span class="mk">${mk}</span>`;
     c.title=dISO;
     c.addEventListener('click',()=>{selDate=dISO;renderScorecard();renderCalendar();
-      document.querySelector('.scorecard').scrollIntoView({behavior:'smooth',block:'center'})});
+      /* The one animation the stylesheet's reduce query cannot reach. */
+      const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+      document.querySelector('.scorecard').scrollIntoView({behavior:reduce?'auto':'smooth',block:'center'})});
     grid.appendChild(c);
   }
   document.getElementById('stFull').textContent=cF;
@@ -364,7 +377,11 @@ function download(filename, text, mime) {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  /* Safari, iOS included — the primary device — has historically ignored a
+     click on an anchor that is not in the document. */
+  document.body.appendChild(a);
   a.click();
+  a.remove();
   /* Revoke on the next tick — revoking synchronously can cancel the download
      on some mobile browsers. */
   setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -407,11 +424,20 @@ renderWeek();
   if (!flushing) describeIdle();
 })();
 
+/* One tick and one visibility handler for the whole page: the day can roll
+   over, the banner can move on and the sync line can age, and all three want
+   the same two moments. describeIdle stays out of the way of a live flush. */
+function tick() {
+  rolloverIfNeeded();
+  renderNow();
+  if (!flushing) describeIdle();
+}
+setInterval(tick, 60000);
 window.addEventListener('online', flushSync);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && loadPending().length) flushSync();
+  if (document.visibilityState === 'visible') tick();
+  else if (loadPending().length) flushSync();
 });
-setInterval(describeIdle, 60000);
 
 /* ---------- service worker ---------- */
 if ('serviceWorker' in navigator) {

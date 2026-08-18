@@ -98,23 +98,27 @@
         <span><i class="d-rest"></i>Rest</span>
       </div>
 
-      <div class="tabs" role="tablist" aria-label="Days of the week">
-        <button class="tab t-label" role="tab" type="button" data-d="mon">Mon</button>
-        <button class="tab t-label" role="tab" type="button" data-d="tue">Tue</button>
-        <button class="tab t-label" role="tab" type="button" data-d="wed">Wed</button>
-        <button class="tab t-label" role="tab" type="button" data-d="thu">Thu</button>
-        <button class="tab t-label" role="tab" type="button" data-d="fri">Fri</button>
-        <button class="tab t-label" role="tab" type="button" data-d="sat">Sat</button>
-        <button class="tab t-label" role="tab" type="button" data-d="sun">Sun</button>
+      <!-- Buttons, not an ARIA tab widget. role=tab/tablist/tabpanel was
+           declared with no aria-controls, no aria-labelledby and no arrow-key
+           navigation, promising a keyboard contract nothing implemented.
+           Toggle buttons keep Tab working and claim only what is true. -->
+      <div class="tabs" role="group" aria-label="Days of the week">
+        <button class="tab t-label" type="button" data-d="mon" aria-controls="p-mon">Mon</button>
+        <button class="tab t-label" type="button" data-d="tue" aria-controls="p-tue">Tue</button>
+        <button class="tab t-label" type="button" data-d="wed" aria-controls="p-wed">Wed</button>
+        <button class="tab t-label" type="button" data-d="thu" aria-controls="p-thu">Thu</button>
+        <button class="tab t-label" type="button" data-d="fri" aria-controls="p-fri">Fri</button>
+        <button class="tab t-label" type="button" data-d="sat" aria-controls="p-sat">Sat</button>
+        <button class="tab t-label" type="button" data-d="sun" aria-controls="p-sun">Sun</button>
       </div>
 
-      <div class="panel" id="p-mon" role="tabpanel"></div>
-      <div class="panel" id="p-tue" role="tabpanel"></div>
-      <div class="panel" id="p-wed" role="tabpanel"></div>
-      <div class="panel" id="p-thu" role="tabpanel"></div>
-      <div class="panel" id="p-fri" role="tabpanel"></div>
-      <div class="panel" id="p-sat" role="tabpanel"></div>
-      <div class="panel" id="p-sun" role="tabpanel"></div>
+      <div class="panel" id="p-mon"></div>
+      <div class="panel" id="p-tue"></div>
+      <div class="panel" id="p-wed"></div>
+      <div class="panel" id="p-thu"></div>
+      <div class="panel" id="p-fri"></div>
+      <div class="panel" id="p-sat"></div>
+      <div class="panel" id="p-sun"></div>
     </section>
 
     <!-- 6 · MATCH RULES -->

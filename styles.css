@@ -268,6 +268,10 @@ main > section > h2{margin-bottom:var(--s4)}
   padding:2px calc(var(--s2) - .18em) 2px var(--s2);
   border:1px solid var(--edge);vertical-align:2px}
 .effort.hard{border-color:var(--twilight);color:var(--chalk)}
+/* Three steps, because Match Rule #2 is about the wave: hard carries the
+   brightest border and the brightest ink, moderate keeps the default --edge
+   boundary, easy drops the boundary altogether and is left as quiet type. */
+.effort.easy{border-color:transparent}
 
 /* Match rules ------------------------------------------------------------- */
 .rule-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s5) var(--s6)}
