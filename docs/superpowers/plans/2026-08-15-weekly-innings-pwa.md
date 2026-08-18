@@ -2472,7 +2472,15 @@ The month rendered as a scorebook page. In a real scorebook a dot ball means *fa
 - Today: a 1px `var(--linseed)` ring.
 - **Consecutive complete days sit flush with no gap between them**, so a streak reads as one continuous bar across the strip. This is the reward surface — it should be the most satisfying thing on the page to look at.
 
-- [ ] **Step 8: Quality floor**
+- [ ] **Step 8: Redraw the icons for the new palette and for maskable safe area**
+
+The Task 9 icons use the old amber `#F5B841` on `#16352A` and centre their glyphs at ~55% of the canvas with no maskable inset, so a circular launcher crop on Android can clip the digits. Update `tools/make-icons.mjs`:
+
+- Swap the two colour constants to the new tokens: `PITCH` becomes `#10261F`, `AMBER` becomes `#E2A32B`.
+- Reduce the glyph block to **40% of the canvas width** and keep it centred, which places it inside the 80%-diameter safe circle every maskable spec assumes.
+- Regenerate: `node tools/make-icons.mjs`, and confirm all three files still report their declared dimensions (192, 512, 180).
+
+- [ ] **Step 9: Quality floor**
 
 - Single column, mobile-first; verify at 380 px with no horizontal scrolling anywhere.
 - Visible keyboard focus on every interactive element: `outline:2px solid var(--linseed);outline-offset:2px`. Ticks, tabs, calendar cells, note input, export buttons.
@@ -2480,7 +2488,7 @@ The month rendered as a scorebook page. In a real scorebook a dot ball means *fa
 - Contrast: `--chalk` on `--field` and `--twilight` on `--field` must both clear WCAG AA for their sizes. Check `--twilight` at 11 px specifically — if it fails, lighten the token rather than enlarging the text.
 - No `!important`. No selector fighting: the prototype's `.section` versus `.cta` style of specificity collision is what this rewrite exists to remove.
 
-- [ ] **Step 9: Verify nothing behavioural regressed**
+- [ ] **Step 10: Verify nothing behavioural regressed**
 
 Run: `npm test`
 Expected: PASS, 53 tests, 0 failures — this task changes no logic, so any failure means you edited behaviour by accident.
@@ -2490,7 +2498,7 @@ Expected: exit 0.
 
 Then confirm by reading `app.js` that every function kept its name and contract: `commit`, `renderScorecard`, `renderCalendar`, `renderStreak`, `renderNow`, `renderWeek`, `renderExam`, `flushSync`, `queueSync`, `describeIdle`, `download`.
 
-- [ ] **Step 10: Commit in three parts**
+- [ ] **Step 11: Commit in four parts**
 
 ```bash
 git add index.html styles.css
@@ -2513,6 +2521,18 @@ commit -m "Reorder the page around the daily action
 
 The scorecard leads and the schedule moves below the fold. Drops the
 four hero stat plates: none of those numbers change or prompt an action.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
+```
+
+```bash
+git add tools/make-icons.mjs icons
+GIT_AUTHOR_DATE="2026-08-18T15:25:00+05:30" GIT_COMMITTER_DATE="2026-08-18T15:25:00+05:30" \
+git -c user.name="Shivam Honrao" -c user.email="shivam.sanjay@truworthwellness.com" \
+commit -m "Redraw the icons in the new palette with a maskable safe area
+
+The glyph block was centred at 55% of the canvas, which a circular
+launcher crop can clip.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
