@@ -26,6 +26,32 @@ function renderDay(dayKey) {
 
 DAY_KEYS.forEach(renderDay);
 
+/* ---------- NOW ---------- */
+function renderNow() {
+  const { dayKey, minutes } = istNow();
+  const { state, dayKey: blockDay, block } = resolveNow(dayKey, minutes);
+
+  const label = block.subject ? `${block.label} — ${block.subject}` : block.label;
+  const when = state === 'now' ? block.time : block.time.split(' – ')[0];
+  const dayPrefix = blockDay === dayKey ? '' : `${WEEK[blockDay].title.slice(0, 3)} · `;
+  const banner = document.getElementById('nowBanner');
+  banner.classList.toggle('next', state !== 'now');
+  banner.innerHTML = `<b>${state === 'now' ? 'NOW' : 'NEXT'}</b> · ${dayPrefix}${when} · ` +
+                     `<span class="what-now">${label}</span>`;
+
+  document.querySelectorAll('.row.is-now').forEach((el) => el.classList.remove('is-now'));
+  if (state === 'now') {
+    const i = WEEK[dayKey].blocks.indexOf(block);
+    document.querySelector(`.row[data-day="${dayKey}"][data-i="${i}"]`)?.classList.add('is-now');
+  }
+}
+
+renderNow();
+setInterval(renderNow, 60000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') renderNow();
+});
+
 /* ---------- day tabs ---------- */
 const tabs=document.querySelectorAll('.tab'),panels=document.querySelectorAll('.panel');
 function showDay(d){
