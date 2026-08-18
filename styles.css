@@ -153,6 +153,33 @@ main > section > h2{margin-bottom:var(--s4)}
 .sc-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:var(--s2) var(--s4);margin-top:var(--s5)}
 .sc-foot .status{display:flex;gap:var(--s4)}
 
+/* Season strip ------------------------------------------------------------ */
+/* The month as a scorebook page. Hairlines separate rows and appear nowhere
+   else. Complete days sit flush, so a streak reads as one continuous bar. */
+.cal-nav{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-bottom:var(--s3)}
+.cal-nav button{padding:var(--s2) var(--s3);border-radius:var(--s2)}
+.cal-nav button:hover{color:var(--chalk)}
+.cal-nav .mname{color:var(--chalk)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:0;border-bottom:1px solid var(--rule)}
+.cal-dow{text-align:center;padding-bottom:var(--s2)}
+.cell{position:relative;aspect-ratio:1;min-width:0;border-top:1px solid var(--rule);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s1)}
+.cell.blank{cursor:default}
+.cell:not(.blank):hover .dnum{color:var(--chalk)}
+.cell.full{background:var(--linseed)}
+.cell.full .dnum{color:var(--field);font-variation-settings:'wdth' 90,'wght' 800}
+.cell.today{box-shadow:inset 0 0 0 1px var(--linseed)}
+.cell.sel{box-shadow:inset 0 0 0 2px var(--chalk)}
+.mk{display:flex;align-items:flex-end;justify-content:center;gap:2px;height:var(--s3)}
+.mk i{width:var(--pip);height:100%;border-radius:1px;display:block}
+.mk .b-s{background:var(--linseed)}
+.mk .b-w{background:var(--leather)}
+.mk .b-z{background:var(--chalk)}
+/* The dot ball: a past day on which nothing was scored. */
+.mk .dot{color:var(--twilight);line-height:var(--s3)}
+.cal-stats{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s5);margin-top:var(--s4)}
+.cal-stats b{color:var(--chalk);font-variant-numeric:tabular-nums}
+
 /* This week --------------------------------------------------------------- */
 .week-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s2)}
 .week-stat{background:var(--crease);border-radius:var(--radius);padding:var(--s4) var(--s3);

@@ -219,7 +219,7 @@ function renderCalendar(){
   mName.textContent=new Date(calY,calM,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
   grid.innerHTML='';
   ['S','M','T','W','T','F','S'].forEach(d=>{
-    const h=document.createElement('div');h.className='cal-dow';h.textContent=d;grid.appendChild(h);
+    const h=document.createElement('div');h.className='cal-dow t-label';h.textContent=d;grid.appendChild(h);
   });
   const first=new Date(calY,calM,1).getDay();
   const days=new Date(calY,calM+1,0).getDate();
@@ -231,9 +231,18 @@ function renderCalendar(){
     const rec=progress[dISO]||{};
     const full=rec.s&&rec.w&&rec.z;
     if(rec.s)cS++;if(rec.w)cW++;if(full)cF++;
-    const c=document.createElement('div');
+    /* A complete day is a filled block, so consecutive ones read as one bar.
+       A partial day shows one bar per habit. A past day with nothing on it
+       gets a dot ball — in a scorebook that mark means "failed to score". */
+    let mk='';
+    if(!full){
+      mk=(rec.s?'<i class="b-s"></i>':'')+(rec.w?'<i class="b-w"></i>':'')+(rec.z?'<i class="b-z"></i>':'');
+      if(!mk&&dISO<tISO)mk='<span class="dot">·</span>';
+    }
+    const c=document.createElement('button');
+    c.type='button';
     c.className='cell'+(dISO===tISO?' today':'')+(full?' full':'')+(dISO===selDate?' sel':'');
-    c.innerHTML=`<span class="dnum">${d}</span><span class="pips">${rec.s?'<i class="pip p-s"></i>':''}${rec.w?'<i class="pip p-w"></i>':''}${rec.z?'<i class="pip p-z"></i>':''}</span>`;
+    c.innerHTML=`<span class="dnum t-time">${d}</span><span class="mk">${mk}</span>`;
     c.title=dISO;
     c.addEventListener('click',()=>{selDate=dISO;renderScorecard();renderCalendar();
       document.querySelector('.scorecard').scrollIntoView({behavior:'smooth',block:'center'})});
