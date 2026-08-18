@@ -5,23 +5,31 @@ import { WEEK, DAY_KEYS, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
 
 /* ---------- day panels ---------- */
+/* The ledger gutter is 56px, so a '6:45 – 7:45' range is stacked rather than
+   set on one line. Anything without a range renders as a single line. */
+function whenCell(time) {
+  const [from, to] = time.split(' – ');
+  return `<div class="when t-time"><span>${from}</span>` +
+         (to ? `<span>&ndash;${to}</span>` : '') + `</div>`;
+}
+
 function rowHTML(dayKey, block, i) {
-  const subj = block.subject ? `<span class="subj">${block.subject}</span>` : '';
+  const subj = block.subject ? `<span class="subj t-label">${block.subject}</span>` : '';
   const eff = block.effort
-    ? `<span class="effort${block.effort.cls ? ' ' + block.effort.cls : ''}">${block.effort.text}</span>`
+    ? `<span class="effort t-label${block.effort.cls ? ' ' + block.effort.cls : ''}">${block.effort.text}</span>`
     : '';
-  const detail = block.detail ? `<em>${block.detail}</em>` : '';
-  return `<div class="row" data-day="${dayKey}" data-i="${i}">` +
-         `<div class="time">${block.time}</div>` +
-         `<div class="bar b-${block.lane}"></div>` +
-         `<div class="what"><strong>${block.label}${subj}${eff}</strong>${detail}</div></div>`;
+  const detail = block.detail ? `<em class="t-note">${block.detail}</em>` : '';
+  return `<div class="row ledger lane-${block.lane}" data-day="${dayKey}" data-i="${i}">` +
+         whenCell(block.time) +
+         `<div class="what"><strong class="t-body">${block.label}${subj}${eff}</strong>${detail}</div></div>`;
 }
 
 function renderDay(dayKey) {
   const day = WEEK[dayKey];
   document.getElementById('p-' + dayKey).innerHTML =
-    `<div class="day-head"><h2>${day.title}</h2><span class="tag">${day.tag}</span></div>` +
-    `<p class="day-note">${day.note}</p>` +
+    `<div class="day-head"><h3 class="t-title">${day.title}</h3>` +
+    `<span class="tag t-label">${day.tag}</span></div>` +
+    `<p class="day-note t-note">${day.note}</p>` +
     day.blocks.map((b, i) => rowHTML(dayKey, b, i)).join('');
 }
 
@@ -34,11 +42,13 @@ function renderNow() {
 
   const label = block.subject ? `${block.label} — ${block.subject}` : block.label;
   const when = state === 'now' ? block.time : block.time.split(' – ')[0];
-  const dayPrefix = blockDay === dayKey ? '' : `${WEEK[blockDay].title.slice(0, 3)} · `;
+  const dayPrefix = blockDay === dayKey ? '' : ` · ${WEEK[blockDay].title.slice(0, 3)}`;
   const banner = document.getElementById('nowBanner');
   banner.classList.toggle('next', state !== 'now');
-  banner.innerHTML = `<b>${state === 'now' ? 'NOW' : 'NEXT'}</b> · ${dayPrefix}${when} · ` +
-                     `<span class="what-now">${label}</span>`;
+  banner.innerHTML = whenCell(when) +
+    `<div class="what"><span class="state t-label">` +
+    `${state === 'now' ? 'NOW' : 'NEXT'}${dayPrefix}</span>` +
+    `<span class="what-now t-body">${label}</span></div>`;
 
   document.querySelectorAll('.row.is-now').forEach((el) => el.classList.remove('is-now'));
   if (state === 'now') {
@@ -68,7 +78,7 @@ let progress = loadProgress();
 const saveStatus = document.getElementById('saveStatus');
 function setSaveStatus(text, color) {
   saveStatus.textContent = text;
-  saveStatus.style.color = color || 'var(--muted)';
+  saveStatus.style.color = color || 'var(--twilight)';
 }
 
 /* Called after every mutation. The localStorage write is synchronous and
@@ -79,7 +89,7 @@ function commit(dates) {
     progress[date] = { ...progress[date], u: new Date().toISOString() };
   }
   saveProgress(progress);
-  setSaveStatus('✓ saved', '#7BC49A');
+  setSaveStatus('✓ saved', 'var(--linseed)');
   setTimeout(() => {
     if (saveStatus.textContent === '✓ saved') setSaveStatus('');
   }, 2500);
@@ -95,13 +105,13 @@ let attempt = 0;
 
 function setSyncStatus(text, color) {
   syncEl.textContent = text;
-  syncEl.style.color = color || 'var(--muted)';
+  syncEl.style.color = color || 'var(--twilight)';
 }
 
 function describeIdle() {
   const pending = loadPending();
   if (!isConfigured()) return setSyncStatus('local only · sync not configured');
-  if (pending.length) return setSyncStatus(`offline · ${pending.length} unsynced`, 'var(--amber)');
+  if (pending.length) return setSyncStatus(`offline · ${pending.length} unsynced`, 'var(--linseed)');
   if (lastSyncAt) {
     const mins = Math.round((Date.now() - lastSyncAt) / 60000);
     return setSyncStatus(mins < 1 ? 'synced · just now' : `synced · ${mins} min ago`);
@@ -125,7 +135,7 @@ async function flushSync() {
        'online' event. An unbounded retry loop would burn battery all day. */
     if (attempt < 4) {
       attempt++;
-      setSyncStatus(`retrying sync (${attempt}/4)…`, 'var(--amber)');
+      setSyncStatus(`retrying sync (${attempt}/4)…`, 'var(--linseed)');
       clearTimeout(syncTimer);
       syncTimer = setTimeout(flushSync, 1000 * 2 ** (attempt - 1));
     } else {
@@ -239,16 +249,14 @@ document.getElementById('nextM').addEventListener('click',()=>{calM++;if(calM>11
 /* ---------- exam countdown ---------- */
 function renderExam() {
   const next = nextExam(todayISO());
-  if (!next) return;   /* every exam past — the plate keeps its sleep default */
+  if (!next) return;   /* every exam past — the line stays empty */
 
-  const num = document.getElementById('examNum');
-  const cap = document.getElementById('examCap');
-  num.textContent = next.days;
-  cap.textContent = next.days === 0 ? `${next.label} · today`
-                  : next.days === 1 ? `${next.label} · day away`
-                  : `${next.label} · days away`;
+  const line = document.getElementById('examLine');
+  line.textContent = next.days === 0 ? `${next.label} · today`
+                   : next.days === 1 ? `${next.label} · 1 day`
+                   : `${next.label} · ${next.days} days`;
   const group = EXAMS.find((e) => e.label === next.label);
-  num.title = `${next.label} · ${formatExamDates(group.dates)}`;
+  line.title = `${next.label} · ${formatExamDates(group.dates)}`;
 }
 
 renderExam();
@@ -262,16 +270,18 @@ function renderWeek() {
     [`${sum.workout}/7`, 'Workouts'],
     [`${sum.sleep}/7`, 'Slept by 11'],
     [sum.bestStreak, 'Best streak'],
-  ].map(([n, cap]) => `<div class="week-stat"><b>${n}</b><span>${cap}</span></div>`).join('');
+  ].map(([n, cap]) =>
+    `<div class="week-stat"><b class="t-title">${n}</b><span class="t-label">${cap}</span></div>`).join('');
 
   const notes = document.getElementById('weekNotes');
   notes.innerHTML = sum.notes.length
     ? sum.notes.map((n) => {
         const label = new Date(n.date + 'T00:00:00')
           .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' });
-        return `<li><span class="d">${label}</span>${n.note}</li>`;
+        return `<li class="ledger"><span class="when t-time">${label}</span>` +
+               `<span class="what t-note">${n.note}</span></li>`;
       }).join('')
-    : `<li class="empty">No notes yet this week — the week started ${start}.</li>`;
+    : `<li class="t-note">No notes yet this week — the week started ${start}.</li>`;
 }
 
 /* ---------- export ---------- */
