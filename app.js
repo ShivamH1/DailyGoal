@@ -2,6 +2,7 @@ import { loadProgress, saveProgress, loadPending, markPending, clearPending } fr
 import { computeStreak, iso, mergeProgress } from './progress.js';
 import { pull, push, isConfigured } from './sync.js';
 import { WEEK, DAY_KEYS, istNow, resolveNow } from './schedule.js';
+import { nextExam, formatExamDates, EXAMS } from './exams.js';
 
 /* ---------- day panels ---------- */
 function rowHTML(dayKey, block, i) {
@@ -233,6 +234,23 @@ function renderCalendar(){
 }
 document.getElementById('prevM').addEventListener('click',()=>{calM--;if(calM<0){calM=11;calY--}renderCalendar()});
 document.getElementById('nextM').addEventListener('click',()=>{calM++;if(calM>11){calM=0;calY++}renderCalendar()});
+
+/* ---------- exam countdown ---------- */
+function renderExam() {
+  const next = nextExam(todayISO());
+  if (!next) return;   /* every exam past — the plate keeps its sleep default */
+
+  const num = document.getElementById('examNum');
+  const cap = document.getElementById('examCap');
+  num.textContent = next.days;
+  cap.textContent = next.days === 0 ? `${next.label} · today`
+                  : next.days === 1 ? `${next.label} · day away`
+                  : `${next.label} · days away`;
+  const group = EXAMS.find((e) => e.label === next.label);
+  num.title = `${next.label} · ${formatExamDates(group.dates)}`;
+}
+
+renderExam();
 
 /* ---------- init ---------- */
 renderScorecard();
