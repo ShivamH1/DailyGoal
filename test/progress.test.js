@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  iso, addDays, weekStart, clearableDates, computeStreak, mergeProgress, weeklySummary, toCSV
+  iso, addDays, weekStart, clearableDates, computeStreak, growthVals, mergeProgress,
+  weeklySummary, toCSV
 } from '../progress.js';
 
 test('iso formats local date parts, not UTC', () => {
@@ -153,4 +154,74 @@ test('CSV quotes a note containing a newline', () => {
   assert.equal(lines[1], '2026-08-20,1,1,0,"line one');
   assert.equal(lines[2], 'line two",');
   assert.match(toCSV(p), /"line one\nline two"/);
+});
+
+/* ---------- growth dots ---------- */
+
+const done = { s: 1, w: 1 };
+
+test('growthVals returns one entry per day, ending on today', () => {
+  const g = growthVals({}, '2026-08-20');
+  assert.equal(g.length, 14);
+  assert.equal(g[0].date, '2026-08-07');
+  assert.equal(g[13].date, '2026-08-20');
+});
+
+test('an empty history is fourteen zeroes', () => {
+  assert.deepEqual(growthVals({}, '2026-08-20').map((v) => v.run), Array(14).fill(0));
+});
+
+test('a run grows day by day and an incomplete day resets it', () => {
+  const p = {
+    '2026-08-18': done,
+    '2026-08-19': done,
+    '2026-08-20': done,
+  };
+  const runs = growthVals(p, '2026-08-20', 5).map((v) => v.run);
+  //             16 17 18 19 20
+  assert.deepEqual(runs, [0, 0, 1, 2, 3]);
+});
+
+test('a gap in the middle drops the next dot back to the smallest', () => {
+  const p = {
+    '2026-08-16': done,
+    '2026-08-17': done,
+    /* 18th missed */
+    '2026-08-19': done,
+    '2026-08-20': done,
+  };
+  assert.deepEqual(growthVals(p, '2026-08-20', 5).map((v) => v.run), [1, 2, 0, 1, 2]);
+});
+
+test('the run is seeded from before the window, not restarted at it', () => {
+  /* A streak that began well before the first dot must not shrink the whole
+     row back to 1..5 — the dot's size is the real length of its run. */
+  const p = {};
+  for (let d = 10; d <= 20; d++) p[`2026-08-${d}`] = done;
+  assert.deepEqual(growthVals(p, '2026-08-20', 5).map((v) => v.run), [7, 8, 9, 10, 11]);
+});
+
+test('the seed stops at the first gap before the window', () => {
+  const p = {};
+  for (let d = 10; d <= 20; d++) p[`2026-08-${d}`] = done;
+  delete p['2026-08-14'];
+  //                                       16 17 18 19 20
+  assert.deepEqual(growthVals(p, '2026-08-20', 5).map((v) => v.run), [2, 3, 4, 5, 6]);
+});
+
+test('sleep alone does not grow a dot, matching the streak rule', () => {
+  const p = { '2026-08-19': { z: 1 }, '2026-08-20': { s: 1, z: 1 } };
+  assert.deepEqual(growthVals(p, '2026-08-20', 3).map((v) => v.run), [0, 0, 0]);
+});
+
+test('growthVals crosses a month boundary the way addDays does', () => {
+  const p = { '2026-08-31': done, '2026-09-01': done };
+  const g = growthVals(p, '2026-09-01', 3);
+  assert.deepEqual(g.map((v) => v.date), ['2026-08-30', '2026-08-31', '2026-09-01']);
+  assert.deepEqual(g.map((v) => v.run), [0, 1, 2]);
+});
+
+test('the window length is configurable and today is always last', () => {
+  const g = growthVals({}, '2026-01-01', 3);
+  assert.deepEqual(g.map((v) => v.date), ['2025-12-30', '2025-12-31', '2026-01-01']);
 });

@@ -59,17 +59,17 @@
 
   /* Text roles.
      --text-muted is neutral-700, not the design's neutral-600: at 12.5px the
-     600 rung measures 3.61 on --bg and 3.21 on --surface, both under 4.5.
+     600 rung measures 3.62 on --bg and 3.22 on --surface, both under 4.5.
      700 measures 5.53 and 4.92. */
   --text:var(--ink);
   --text-muted:var(--color-neutral-700);
   /* Future calendar dates.  neutral-500 measured 2.15 on --surface; 600 only
-     reaches 3.58, so 13px numerals take the 700 rung too (4.92).  Hierarchy
-     against a past date survives: ink on --surface is 11.99. */
+     reaches 3.22, so 13px numerals take the 700 rung too (4.92).  Hierarchy
+     against a past date survives: ink on --surface is 12.40. */
   --text-future:var(--color-neutral-700);
   --ok:var(--color-accent-2-700);      /* 4.85 on --surface */
   --warn:var(--color-accent-800);      /* 7.06 on --surface */
-  --focus:var(--color-accent-700);     /* 5.74 on --bg, 5.09 on --surface */
+  --focus:var(--color-accent-700);     /* 5.74 on --bg, 5.10 on --surface */
 
   /* Filled controls.  The done tick, the active day tab and a complete
      calendar day all carry --bg as their label, and --bg on --accent measures
@@ -83,8 +83,8 @@
   --numeral:var(--color-accent-600);
 
   /* Season-strip pips.  All three sit on --surface and all three are graphics,
-     so the floor is 3.0.  The design's 500 rungs measured 2.24 / 2.11 / 2.15;
-     the 600 rungs measure 3.46 / 3.29 / 3.58. */
+     so the floor is 3.0.  The design's 500 rungs measured 2.24 / 2.12 / 2.15;
+     the 600 rungs measure 3.46 / 3.29 / 3.22. */
   --pip-study:var(--color-accent-600);
   --pip-workout:var(--color-accent-2-600);
   --pip-sleep:var(--color-neutral-600);
@@ -95,12 +95,12 @@
   --lane-work:var(--color-neutral-800);      /* 8.91 */
   --lane-fit:var(--color-accent-2-600);      /* 3.29 */
   --lane-cricket:var(--color-accent-800);    /* 7.06 */
-  --lane-rest:var(--color-neutral-600);      /* 3.58 — the quietest lane that
+  --lane-rest:var(--color-neutral-600);      /* 3.22 — the quietest lane that
                                                 still clears the floor */
 
   /* Boundaries.  A control's edge is a graphic and owes 3.0: neutral-400 on
      --bg is 1.89, neutral-600 is 3.62. */
-  --edge:var(--color-neutral-600);
+  --edge:var(--color-neutral-600);          /* 3.62 on --bg, 3.22 on --surface */
   --hairline:rgba(103,91,80,.22);
 
   /* Type */
@@ -348,7 +348,7 @@ main > section > h2{font-family:var(--display);font-weight:400;
   gap:var(--s2);margin-bottom:var(--s2)}
 .day-title{font-family:var(--display);font-weight:400;
   font-size:clamp(1.3rem,4vw,1.7rem);line-height:1.1}
-/* The day tag: --bg on accent-2-900 measures 9.96. */
+/* The day tag: --bg on accent-2-900 measures 9.95. */
 .tag{flex:none;border-radius:var(--r-pill);padding:4px var(--s3);
   background:var(--color-accent-2-900);color:var(--bg);
   font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}

@@ -1,10 +1,12 @@
-/* Generates the scoreboard icons: linseed digits on pitch green.
+/* Generates the scoreboard icons: sand digits on deep terracotta.
    Run: node tools/make-icons.mjs   (no dependencies) */
 import { deflateSync, crc32 } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
-const PITCH = [0x10, 0x26, 0x1f];   /* --field  #10261F */
-const AMBER = [0xe2, 0xa3, 0x2b];   /* --linseed #E2A32B */
+/* The two Organic steps furthest apart in value that still read as one
+   family: accent-700 ground, neutral-100 glyphs. 5.74:1. */
+const GROUND = [0x88, 0x4b, 0x22];   /* --color-accent-700  #884B22 */
+const GLYPH  = [0xf5, 0xea, 0xd8];   /* --color-neutral-100 #F5EAD8 */
 
 /* 5x7 glyphs, one string row per line, '#' = lit pixel. */
 const GLYPHS = {
@@ -59,9 +61,9 @@ function render(size, text) {
     if (gx >= 0 && gy >= 0 && gy < 7 && gx < cols) {
       const ch = text[Math.floor(gx / 6)];
       const col = gx % 6;
-      if (col < 5 && GLYPHS[ch] && GLYPHS[ch][gy][col] === '#') return AMBER;
+      if (col < 5 && GLYPHS[ch] && GLYPHS[ch][gy][col] === '#') return GLYPH;
     }
-    return PITCH;
+    return GROUND;
   });
 }
 

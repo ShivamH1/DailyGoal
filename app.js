@@ -1,5 +1,5 @@
 import { loadProgress, saveProgress, loadPending, markPending, clearPending } from './storage.js';
-import { clearableDates, computeStreak, mergeProgress, toCSV, weeklySummary, weekStart } from './progress.js';
+import { clearableDates, computeStreak, growthVals, mergeProgress, toCSV, weeklySummary, weekStart } from './progress.js';
 import { pull, push, isConfigured } from './sync.js';
 import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
@@ -290,8 +290,20 @@ Object.entries(ticks).forEach(([k,el])=>{
 });
 backBtn.addEventListener('click',()=>{selDate=todayISO();renderScorecard();renderCalendar()});
 
+const growthEl = document.getElementById('growthDots');
+const GROWTH_CAP = 8;   /* 14 dots at the largest size still fit the card */
+
 function renderStreak() {
-  document.getElementById('streak').textContent = computeStreak(progress, todayISO());
+  const t = todayISO();
+  document.getElementById('streak').textContent = computeStreak(progress, t);
+  /* The arithmetic is growthVals's, in progress.js and under test. All this
+     does is map a run length onto a size, and cap it so a very long streak
+     cannot push fourteen dots past the edge of the card. */
+  const vals = growthVals(progress, t);
+  growthEl.innerHTML = vals.map((v) =>
+    `<i class="${v.run ? 'grew' : ''}" style="--g:${Math.min(v.run, GROWTH_CAP)}"></i>`).join('');
+  growthEl.setAttribute('aria-label',
+    `Growth over the last ${vals.length} days — ${vals.filter((v) => v.run).length} complete`);
 }
 
 /* ---------- calendar ---------- */

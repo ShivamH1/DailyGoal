@@ -31,6 +31,30 @@ export function computeStreak(progress, todayIso) {
   return n;
 }
 
+/* The growth dots under the streak number. Fourteen days ending on todayIso;
+   each entry carries the length of the run its day belongs to. A complete day
+   extends the run, so consecutive days grow; an incomplete day is a 0, which
+   the renderer draws as the small grey dot.
+
+   The run is seeded from the days immediately before the window, because a
+   dot's size should be the true length of its run — a thirty-day streak must
+   not restart at 1 merely because the window does. The seed loop terminates
+   at the first gap, and a missing record is a gap, so sparse history costs
+   nothing. "Complete" is the same s && w test the streak uses: sleep is
+   tracked but does not carry the chain. */
+export function growthVals(progress, todayIso, days = 14) {
+  const start = addDays(todayIso, -(days - 1));
+  let run = 0;
+  for (let c = addDays(start, -1); complete(progress[c]); c = addDays(c, -1)) run++;
+  const out = [];
+  for (let i = 0; i < days; i++) {
+    const date = addDays(start, i);
+    run = complete(progress[date]) ? run + 1 : 0;
+    out.push({ date, run });
+  }
+  return out;
+}
+
 /* Which queued dates a completed push may safely clear. A date whose record
    changed while the push was in flight must stay queued: the body was
    serialised before that change, so clearing it by date would strand the
