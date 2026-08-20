@@ -3,10 +3,11 @@
 import { deflateSync, crc32 } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
-/* The two Organic steps furthest apart in value that still read as one
-   family: accent-700 ground, neutral-100 glyphs. 5.74:1. */
-const GROUND = [0x88, 0x4b, 0x22];   /* --color-accent-700  #884B22 */
-const GLYPH  = [0xf5, 0xea, 0xd8];   /* --color-neutral-100 #F5EAD8 */
+/* The Organic pair the rest of the app already uses for a filled control
+   carrying a light label: accent-700 ground, --color-bg glyphs. 5.72:1, and
+   --color-bg is also the manifest's background_color. */
+const GROUND = [0x8c, 0x49, 0x1a];   /* --color-accent-700  #8C491A */
+const GLYPH  = [0xf5, 0xea, 0xd8];   /* --color-bg          #F5EAD8 */
 
 /* 5x7 glyphs, one string row per line, '#' = lit pixel. */
 const GLYPHS = {

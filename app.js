@@ -5,17 +5,18 @@ import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
 
 /* ---------- day panels ---------- */
-/* The time column is narrow and right-aligned, so a '6:45 – 7:45' range is
-   stacked over two lines rather than set on one. Anything without a range
-   renders as a single line. */
+/* The design's time column: 96px, right-aligned, and a '6:45 – 7:45' range
+   split on ' – ' across two lines — '6:45' then '– 7:45'. A block with no
+   range ('Morning', '8:15 onwards') stays one line. */
 function whenCell(time) {
   const [from, to] = time.split(' – ');
   return `<div class="when"><span>${from}</span>` +
-         (to ? `<span>&ndash;${to}</span>` : '') + `</div>`;
+         (to ? `<span>&ndash; ${to}</span>` : '') + `</div>`;
 }
 
-/* Lane, block, time — in that order in the DOM, because the lane is a dot in
-   the left gutter and the time column is right-aligned at the far end. */
+/* Time first, then the block: the design's row is a 96px right-aligned time
+   column beside a body that opens with the lane dot. The lane is a dot now,
+   not a bar down the side. */
 function rowHTML(dayKey, block, i) {
   const subj = block.subject ? `<span class="subj">${block.subject}</span>` : '';
   const eff = block.effort
@@ -23,18 +24,19 @@ function rowHTML(dayKey, block, i) {
     : '';
   const detail = block.detail ? `<em>${block.detail}</em>` : '';
   return `<div class="row lane-${block.lane}" data-day="${dayKey}" data-i="${i}">` +
-         `<span class="lane-dot" aria-hidden="true"></span>` +
+         whenCell(block.time) +
+         `<div class="body"><span class="lane-dot" aria-hidden="true"></span>` +
          `<div class="what"><strong>${block.label}${subj}${eff}</strong>${detail}</div>` +
-         whenCell(block.time) + `</div>`;
+         `</div></div>`;
 }
 
 function renderDay(dayKey) {
   const day = WEEK[dayKey];
   document.getElementById('p-' + dayKey).innerHTML =
-    `<div class="day-head"><h3 class="day-title">${day.title}</h3>` +
+    `<div class="day-head"><h3>${day.title}</h3>` +
     `<span class="tag">${day.tag}</span></div>` +
     `<p class="day-note">${day.note}</p>` +
-    day.blocks.map((b, i) => rowHTML(dayKey, b, i)).join('');
+    `<div class="blocks">${day.blocks.map((b, i) => rowHTML(dayKey, b, i)).join('')}</div>`;
 }
 
 DAY_KEYS.forEach(renderDay);
@@ -53,16 +55,20 @@ function renderNow() {
   nowKey = key;
 
   const label = block.subject ? `${block.label} — ${block.subject}` : block.label;
-  const when = state === 'now' ? block.time : block.time.split(' – ')[0];
+  const [from, to] = block.time.split(' – ');
   const dayPrefix = blockDay === dayKey ? '' : ` · ${WEEK[blockDay].title.slice(0, 3)}`;
-  /* Small enough to sit in the header, so the three parts run inline rather
-     than stacking over a gutter. Same three facts as the old strip. */
+  /* The design's wording: '<b>Now</b> Work · until 6:30' for a block in
+     progress. A block with no end time ('Lights out', 'Morning') drops the
+     tail rather than inventing one. When nothing is running the app's own
+     next/gap/rollover wording stands, prefixed with the day when the next
+     block belongs to tomorrow. */
+  const text = state === 'now'
+    ? `<b>Now</b> ${label}${to ? ` · until ${to}` : ''}`
+    : `<b>Next</b>${dayPrefix} ${label} · ${from}`;
   const banner = document.getElementById('nowBanner');
   banner.classList.toggle('next', state !== 'now');
   banner.innerHTML =
-    `<span class="now-state">${state === 'now' ? 'Now' : 'Next'}${dayPrefix}</span>` +
-    `<span class="now-what">${label}</span>` +
-    `<span class="now-when">${when}</span>`;
+    `<span class="now-dot" aria-hidden="true"></span><span class="now-text">${text}</span>`;
 
   document.querySelectorAll('.row.is-now').forEach((el) => el.classList.remove('is-now'));
   if (state === 'now') {
@@ -235,7 +241,8 @@ function rolloverIfNeeded() {
 
 /* ---------- scorecard ---------- */
 const ticks={s:document.getElementById('t-s'),w:document.getElementById('t-w'),z:document.getElementById('t-z')};
-const scDate=document.getElementById('scDate'),backBtn=document.getElementById('backToday');
+const scDate=document.getElementById('scDate'),scSub=document.getElementById('scSub'),
+      backBtn=document.getElementById('backToday');
 
 /* ---------- daily note ---------- */
 const noteInput = document.getElementById('noteInput');
@@ -271,7 +278,11 @@ function renderScorecard(){
   });
   const d=new Date(selDate+'T00:00:00');
   const isToday=selDate===todayISO();
-  scDate.textContent=(isToday?'Today · ':'')+d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+  /* The design's heading is a flat "Today" beside a small "Thu, 20 Aug". That
+     is right for today and a lie for any other day, so the heading names the
+     weekday when the user has navigated off today. */
+  scDate.textContent=isToday?'Today':d.toLocaleDateString('en-IN',{weekday:'long'});
+  scSub.textContent=d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
   backBtn.style.display=isToday?'none':'inline';
   /* Never clobber what the user is actively typing: the init pull() resolves
      asynchronously and re-renders, which would otherwise wipe an in-progress
@@ -291,19 +302,17 @@ Object.entries(ticks).forEach(([k,el])=>{
 backBtn.addEventListener('click',()=>{selDate=todayISO();renderScorecard();renderCalendar()});
 
 const growthEl = document.getElementById('growthDots');
-const GROWTH_CAP = 8;   /* 14 dots at the largest size still fit the card */
 
 function renderStreak() {
   const t = todayISO();
   document.getElementById('streak').textContent = computeStreak(progress, t);
-  /* The arithmetic is growthVals's, in progress.js and under test. All this
-     does is map a run length onto a size, and cap it so a very long streak
-     cannot push fourteen dots past the edge of the card. */
+  /* Both the size and the cap are growthVals's, in progress.js and under
+     test. All this does is put the numbers on the elements. */
   const vals = growthVals(progress, t);
   growthEl.innerHTML = vals.map((v) =>
-    `<i class="${v.run ? 'grew' : ''}" style="--g:${Math.min(v.run, GROWTH_CAP)}"></i>`).join('');
+    `<i class="${v.complete ? 'live' : ''}" style="width:${v.size}px"></i>`).join('');
   growthEl.setAttribute('aria-label',
-    `Growth over the last ${vals.length} days — ${vals.filter((v) => v.run).length} complete`);
+    `Growth over the last ${vals.length} days — ${vals.filter((v) => v.complete).length} complete`);
 }
 
 /* ---------- calendar ---------- */
@@ -327,13 +336,13 @@ function renderCalendar(){
     const rec=progress[dISO]||{};
     const full=rec.s&&rec.w&&rec.z;
     if(rec.s)cS++;if(rec.w)cW++;if(full)cF++;
-    /* A complete day is a filled circle. A partial day shows one pip per
-       habit beneath the numeral. A past day with nothing on it gets a dot
-       ball — in a scorebook that mark means "failed to score". */
+    /* A complete day is a filled circle and carries no pips — the fill has
+       already said all three were scored. Any other day shows one pip per
+       habit that was, beneath the numeral. The old scorebook "dot ball" for
+       an empty past day is not in the design and is gone with it. */
     let mk='';
     if(!full){
       mk=(rec.s?'<i class="b-s"></i>':'')+(rec.w?'<i class="b-w"></i>':'')+(rec.z?'<i class="b-z"></i>':'');
-      if(!mk&&dISO<tISO)mk='<span class="dot">·</span>';
     }
     const c=document.createElement('button');
     c.type='button';
@@ -341,7 +350,7 @@ function renderCalendar(){
        that, so the stylesheet can hold it to its own contrast floor. */
     c.className='cell'+(dISO===tISO?' today':'')+(full?' full':'')
       +(dISO===selDate?' sel':'')+(dISO>tISO?' future':'');
-    c.innerHTML=`<span class="dnum">${d}</span><span class="mk">${mk}</span>`;
+    c.innerHTML=`<span class="dnum">${d}</span>`+(mk?`<span class="mk">${mk}</span>`:'');
     c.title=dISO;
     c.addEventListener('click',()=>{selDate=dISO;renderScorecard();renderCalendar();
       /* The one animation the stylesheet's reduce query cannot reach. */
@@ -375,13 +384,15 @@ renderExam();
 function renderWeek() {
   const start = weekStart(todayISO());
   const sum = weeklySummary(progress, start);
+  /* The design gives each of the four its own numeral colour, so the class
+     rides along with the value. */
   document.getElementById('weekStats').innerHTML = [
-    [`${sum.study}/5`, 'Study days'],
-    [`${sum.workout}/7`, 'Workouts'],
-    [`${sum.sleep}/7`, 'Slept by 11'],
-    [sum.bestStreak, 'Best streak'],
-  ].map(([n, cap]) =>
-    `<div class="week-stat"><b>${n}</b><span>${cap}</span></div>`).join('');
+    [`${sum.study}/5`, 'Study days', ''],
+    [`${sum.workout}/7`, 'Workouts', ' s-fit'],
+    [`${sum.sleep}/7`, 'Slept by 11', ' s-sleep'],
+    [sum.bestStreak, 'Best run', ''],
+  ].map(([n, cap, cls]) =>
+    `<div class="week-stat${cls}"><b>${n}</b><span>${cap}</span></div>`).join('');
 
   /* The note is the one string on this page the user (or, given the no-auth
      design, anyone with the URL and the anon key) authors. Through innerHTML
