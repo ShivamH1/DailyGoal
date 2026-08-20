@@ -5,31 +5,35 @@ import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
 
 /* ---------- day panels ---------- */
-/* The ledger gutter is 56px, so a '6:45 – 7:45' range is stacked rather than
-   set on one line. Anything without a range renders as a single line. */
+/* The time column is narrow and right-aligned, so a '6:45 – 7:45' range is
+   stacked over two lines rather than set on one. Anything without a range
+   renders as a single line. */
 function whenCell(time) {
   const [from, to] = time.split(' – ');
-  return `<div class="when t-time"><span>${from}</span>` +
+  return `<div class="when"><span>${from}</span>` +
          (to ? `<span>&ndash;${to}</span>` : '') + `</div>`;
 }
 
+/* Lane, block, time — in that order in the DOM, because the lane is a dot in
+   the left gutter and the time column is right-aligned at the far end. */
 function rowHTML(dayKey, block, i) {
-  const subj = block.subject ? `<span class="subj t-label">${block.subject}</span>` : '';
+  const subj = block.subject ? `<span class="subj">${block.subject}</span>` : '';
   const eff = block.effort
-    ? `<span class="effort t-label${block.effort.cls ? ' ' + block.effort.cls : ''}">${block.effort.text}</span>`
+    ? `<span class="effort${block.effort.cls ? ' ' + block.effort.cls : ''}">${block.effort.text}</span>`
     : '';
-  const detail = block.detail ? `<em class="t-note">${block.detail}</em>` : '';
-  return `<div class="row ledger lane-${block.lane}" data-day="${dayKey}" data-i="${i}">` +
-         whenCell(block.time) +
-         `<div class="what"><strong class="t-body">${block.label}${subj}${eff}</strong>${detail}</div></div>`;
+  const detail = block.detail ? `<em>${block.detail}</em>` : '';
+  return `<div class="row lane-${block.lane}" data-day="${dayKey}" data-i="${i}">` +
+         `<span class="lane-dot" aria-hidden="true"></span>` +
+         `<div class="what"><strong>${block.label}${subj}${eff}</strong>${detail}</div>` +
+         whenCell(block.time) + `</div>`;
 }
 
 function renderDay(dayKey) {
   const day = WEEK[dayKey];
   document.getElementById('p-' + dayKey).innerHTML =
-    `<div class="day-head"><h3 class="t-title">${day.title}</h3>` +
-    `<span class="tag t-label">${day.tag}</span></div>` +
-    `<p class="day-note t-note">${day.note}</p>` +
+    `<div class="day-head"><h3 class="day-title">${day.title}</h3>` +
+    `<span class="tag">${day.tag}</span></div>` +
+    `<p class="day-note">${day.note}</p>` +
     day.blocks.map((b, i) => rowHTML(dayKey, b, i)).join('');
 }
 
@@ -41,7 +45,7 @@ function renderNow() {
   const { dayKey, minutes } = istNow();
   const { state, dayKey: blockDay, block } = resolveNow(dayKey, minutes);
 
-  /* The banner is an aria-live region. Rewriting it every 60 seconds makes
+  /* The pill is an aria-live region. Rewriting it every 60 seconds makes
      VoiceOver announce the same sentence once a minute all day, so the DOM is
      only touched when the sentence actually changes. */
   const key = `${state}|${dayKey}|${blockDay}|${block.start}`;
@@ -51,12 +55,14 @@ function renderNow() {
   const label = block.subject ? `${block.label} — ${block.subject}` : block.label;
   const when = state === 'now' ? block.time : block.time.split(' – ')[0];
   const dayPrefix = blockDay === dayKey ? '' : ` · ${WEEK[blockDay].title.slice(0, 3)}`;
+  /* Small enough to sit in the header, so the three parts run inline rather
+     than stacking over a gutter. Same three facts as the old strip. */
   const banner = document.getElementById('nowBanner');
   banner.classList.toggle('next', state !== 'now');
-  banner.innerHTML = whenCell(when) +
-    `<div class="what"><span class="state t-label">` +
-    `${state === 'now' ? 'NOW' : 'NEXT'}${dayPrefix}</span>` +
-    `<span class="what-now t-body">${label}</span></div>`;
+  banner.innerHTML =
+    `<span class="now-state">${state === 'now' ? 'Now' : 'Next'}${dayPrefix}</span>` +
+    `<span class="now-what">${label}</span>` +
+    `<span class="now-when">${when}</span>`;
 
   document.querySelectorAll('.row.is-now').forEach((el) => el.classList.remove('is-now'));
   if (state === 'now') {
@@ -80,9 +86,14 @@ showDay(istNow().dayKey);
 let progress = loadProgress();
 
 const saveStatus = document.getElementById('saveStatus');
+/* Save and sync now share one line under the note. They keep one span each —
+   this writer owns #saveStatus, describeIdle owns #syncStatus — and the
+   stylesheet draws the '·' between them only when both are non-empty, so
+   'Saved · synced just now' reads as one sentence without either function
+   having to know about the other. */
 function setSaveStatus(text, color) {
   saveStatus.textContent = text;
-  saveStatus.style.color = color || 'var(--twilight)';
+  saveStatus.style.color = color || 'var(--text-muted)';
 }
 
 /* Called after every mutation. The localStorage write is synchronous but it
@@ -95,12 +106,12 @@ function commit(dates) {
     progress[date] = { ...progress[date], u: new Date().toISOString() };
   }
   if (saveProgress(progress)) {
-    setSaveStatus('✓ saved', 'var(--linseed)');
+    setSaveStatus('✓ saved', 'var(--ok)');
     setTimeout(() => {
       if (saveStatus.textContent === '✓ saved') setSaveStatus('');
     }, 2500);
   } else {
-    setSaveStatus('⚠ not saved', 'var(--linseed)');
+    setSaveStatus('⚠ not saved', 'var(--warn)');
   }
   queueSync(dates);
   renderWeek();
@@ -119,7 +130,7 @@ let offline = false;
 
 function setSyncStatus(text, color) {
   syncEl.textContent = text;
-  syncEl.style.color = color || 'var(--twilight)';
+  syncEl.style.color = color || 'var(--text-muted)';
 }
 
 function describeIdle() {
@@ -130,7 +141,7 @@ function describeIdle() {
      work and nothing is wrong — saying "offline" there is just false. */
   if (offline) return setSyncStatus(
     pending.length ? `offline · ${pending.length} unsynced` : 'offline · not synced',
-    'var(--linseed)');
+    'var(--warn)');
   if (pending.length) return setSyncStatus(`queued · ${pending.length}`);
   if (lastSyncAt) {
     const mins = Math.round((Date.now() - lastSyncAt) / 60000);
@@ -166,7 +177,7 @@ async function flushSync() {
        'online' event. An unbounded retry loop would burn battery all day. */
     if (attempt < 4) {
       attempt++;
-      setSyncStatus(`retrying sync (${attempt}/4)…`, 'var(--linseed)');
+      setSyncStatus(`retrying sync (${attempt}/4)…`, 'var(--warn)');
       clearTimeout(syncTimer);
       syncTimer = setTimeout(flushSync, 1000 * 2 ** (attempt - 1));
     } else {
@@ -253,7 +264,11 @@ noteInput.addEventListener('blur', () => {
 
 function renderScorecard(){
   const rec=progress[selDate]||{};
-  Object.entries(ticks).forEach(([k,el])=>el.classList.toggle('done',!!rec[k]));
+  Object.entries(ticks).forEach(([k,el])=>{
+    const on=!!rec[k];
+    el.classList.toggle('done',on);
+    el.setAttribute('aria-pressed',on);
+  });
   const d=new Date(selDate+'T00:00:00');
   const isToday=selDate===todayISO();
   scDate.textContent=(isToday?'Today · ':'')+d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
@@ -288,7 +303,7 @@ function renderCalendar(){
   mName.textContent=new Date(calY,calM,1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
   grid.innerHTML='';
   ['S','M','T','W','T','F','S'].forEach(d=>{
-    const h=document.createElement('div');h.className='cal-dow t-label';h.textContent=d;grid.appendChild(h);
+    const h=document.createElement('div');h.className='cal-dow';h.textContent=d;grid.appendChild(h);
   });
   const first=new Date(calY,calM,1).getDay();
   const days=new Date(calY,calM+1,0).getDate();
@@ -300,9 +315,9 @@ function renderCalendar(){
     const rec=progress[dISO]||{};
     const full=rec.s&&rec.w&&rec.z;
     if(rec.s)cS++;if(rec.w)cW++;if(full)cF++;
-    /* A complete day is a filled block, so consecutive ones read as one bar.
-       A partial day shows one bar per habit. A past day with nothing on it
-       gets a dot ball — in a scorebook that mark means "failed to score". */
+    /* A complete day is a filled circle. A partial day shows one pip per
+       habit beneath the numeral. A past day with nothing on it gets a dot
+       ball — in a scorebook that mark means "failed to score". */
     let mk='';
     if(!full){
       mk=(rec.s?'<i class="b-s"></i>':'')+(rec.w?'<i class="b-w"></i>':'')+(rec.z?'<i class="b-z"></i>':'');
@@ -310,8 +325,11 @@ function renderCalendar(){
     }
     const c=document.createElement('button');
     c.type='button';
-    c.className='cell'+(dISO===tISO?' today':'')+(full?' full':'')+(dISO===selDate?' sel':'');
-    c.innerHTML=`<span class="dnum t-time">${d}</span><span class="mk">${mk}</span>`;
+    /* A future date is dimmer than a past one; the class is what carries
+       that, so the stylesheet can hold it to its own contrast floor. */
+    c.className='cell'+(dISO===tISO?' today':'')+(full?' full':'')
+      +(dISO===selDate?' sel':'')+(dISO>tISO?' future':'');
+    c.innerHTML=`<span class="dnum">${d}</span><span class="mk">${mk}</span>`;
     c.title=dISO;
     c.addEventListener('click',()=>{selDate=dISO;renderScorecard();renderCalendar();
       /* The one animation the stylesheet's reduce query cannot reach. */
@@ -332,9 +350,9 @@ function renderExam() {
   if (!next) return;   /* every exam past — the line stays empty */
 
   const line = document.getElementById('examLine');
-  line.textContent = next.days === 0 ? `${next.label} · today`
-                   : next.days === 1 ? `${next.label} · 1 day`
-                   : `${next.label} · ${next.days} days`;
+  line.textContent = next.days === 0 ? `${next.label} today`
+                   : next.days === 1 ? `${next.label} in 1 day`
+                   : `${next.label} in ${next.days} days`;
   const group = EXAMS.find((e) => e.label === next.label);
   line.title = `${next.label} · ${formatExamDates(group.dates)}`;
 }
@@ -351,7 +369,7 @@ function renderWeek() {
     [`${sum.sleep}/7`, 'Slept by 11'],
     [sum.bestStreak, 'Best streak'],
   ].map(([n, cap]) =>
-    `<div class="week-stat"><b class="t-title">${n}</b><span class="t-label">${cap}</span></div>`).join('');
+    `<div class="week-stat"><b>${n}</b><span>${cap}</span></div>`).join('');
 
   /* The note is the one string on this page the user (or, given the no-auth
      design, anyone with the URL and the anon key) authors. Through innerHTML
@@ -362,20 +380,19 @@ function renderWeek() {
   notes.textContent = '';
   if (!sum.notes.length) {
     const li = document.createElement('li');
-    li.className = 't-note';
+    li.className = 'week-empty';
     li.textContent = `No notes yet this week — the week started ${start}.`;
     notes.appendChild(li);
     return;
   }
   for (const n of sum.notes) {
     const li = document.createElement('li');
-    li.className = 'ledger';
     const when = document.createElement('span');
-    when.className = 'when t-time';
+    when.className = 'when';
     when.textContent = new Date(n.date + 'T00:00:00')
       .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' });
     const what = document.createElement('span');
-    what.className = 'what t-note';
+    what.className = 'what';
     what.textContent = n.note;
     li.append(when, what);
     notes.appendChild(li);
