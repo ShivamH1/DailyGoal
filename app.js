@@ -14,6 +14,12 @@ function whenCell(time) {
          (to ? `<span>&ndash; ${to}</span>` : '') + `</div>`;
 }
 
+/* The legend's own words, so the dot's accessible name and the legend agree.
+   The lane dot is now a soft neutral-400 by the user's decision, which is
+   below the 3:1 graphics floor on purpose — so the lane must not be carried
+   by colour alone. Every dot names its lane in text. */
+const LANE_LABELS = { study: 'Study', work: 'Work', fit: 'Workout', cricket: 'Cricket', rest: 'Rest' };
+
 /* Time first, then the block: the design's row is a 96px right-aligned time
    column beside a body that opens with the lane dot. The lane is a dot now,
    not a bar down the side. */
@@ -25,7 +31,9 @@ function rowHTML(dayKey, block, i) {
   const detail = block.detail ? `<em>${block.detail}</em>` : '';
   return `<div class="row lane-${block.lane}" data-day="${dayKey}" data-i="${i}">` +
          whenCell(block.time) +
-         `<div class="body"><span class="lane-dot" aria-hidden="true"></span>` +
+         `<div class="body"><span class="lane-dot" role="img" ` +
+         `aria-label="${LANE_LABELS[block.lane] || block.lane}" ` +
+         `title="${LANE_LABELS[block.lane] || block.lane}"></span>` +
          `<div class="what"><strong>${block.label}${subj}${eff}</strong>${detail}</div>` +
          `</div></div>`;
 }
@@ -151,7 +159,11 @@ function describeIdle() {
   if (pending.length) return setSyncStatus(`queued · ${pending.length}`);
   if (lastSyncAt) {
     const mins = Math.round((Date.now() - lastSyncAt) / 60000);
-    return setSyncStatus(mins < 1 ? 'synced · just now' : `synced · ${mins} min ago`);
+    /* No middot here: the stylesheet already draws one between this span and
+       the save span, so 'synced · just now' rendered as
+       '✓ saved · synced · just now'. The design's line is 'Saved · synced
+       just now'. */
+    return setSyncStatus(mins < 1 ? 'synced just now' : `synced ${mins} min ago`);
   }
   setSyncStatus('');
 }
@@ -310,9 +322,17 @@ function renderStreak() {
      test. All this does is put the numbers on the elements. */
   const vals = growthVals(progress, t);
   growthEl.innerHTML = vals.map((v) =>
-    `<i class="${v.complete ? 'live' : ''}" style="width:${v.size}px"></i>`).join('');
+    `<i class="${v.complete ? 'live' : ''}" style="width:${v.size}px"` +
+    ` title="${v.date} — ${v.complete ? 'complete' : 'missed'}"></i>`).join('');
+  /* A missed dot is deliberately faint — the growing accent run is meant to
+     be the whole story. That only works if nobody has to see it: the label
+     carries the tally and the run itself in words, because the container is
+     role="img" and its children are not exposed. */
+  const done = vals.filter((v) => v.complete).length;
+  const run = vals[vals.length - 1].run;
   growthEl.setAttribute('aria-label',
-    `Growth over the last ${vals.length} days — ${vals.filter((v) => v.complete).length} complete`);
+    `Last ${vals.length} days: ${done} complete, ${vals.length - done} missed. ` +
+    (run ? `Current run ${run} day${run === 1 ? '' : 's'}.` : 'Today is not complete yet.'));
 }
 
 /* ---------- calendar ---------- */
@@ -368,9 +388,13 @@ document.getElementById('nextM').addEventListener('click',()=>{calM++;if(calM>11
 /* ---------- exam countdown ---------- */
 function renderExam() {
   const next = nextExam(todayISO());
-  if (!next) return;   /* every exam past — the line stays empty */
-
   const line = document.getElementById('examLine');
+  /* Cleared, not just skipped. Rendering nothing is not the same as leaving
+     yesterday's countdown up, and this runs across the midnight after the
+     final exam — where the difference is a line reading 'EC-3 in 1 day'
+     forever. */
+  if (!next) { line.textContent = ''; line.removeAttribute('title'); return; }
+
   line.textContent = next.days === 0 ? `${next.label} today`
                    : next.days === 1 ? `${next.label} in 1 day`
                    : `${next.label} in ${next.days} days`;

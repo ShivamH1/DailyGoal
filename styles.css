@@ -121,21 +121,32 @@
   --pip-workout:var(--color-accent-2-600);
   --pip-sleep:var(--color-neutral-600);
 
-  /* Schedule lanes.  Same one-rung step for the three 500s.  Work and rest
-     are both greys and would collide at 600, so work takes 700 instead —
-     which preserves the design's ordering, work darker than rest, and leaves
-     rest the faintest lane on the page at the floor exactly. */
+  /* Schedule lanes.  A one-rung step for the three 500s, and work takes 700
+     because it would otherwise collide with rest — which preserves the
+     design's ordering, work darker than rest. */
   --lane-study:var(--color-accent-600);                 /* 3.35 */
   --lane-work:var(--color-neutral-700);                 /* 4.92 */
   --lane-fit:var(--color-accent-2-600);                 /* 3.14 */
   --lane-cricket:var(--color-accent-2-700);             /* 4.82 — as designed */
-  --lane-rest:var(--color-neutral-600);                 /* 3.21 */
+  /* rest is the user's call, and it goes the other way.  It tags 17 of the
+     schedule's blocks, and at 600 all five lanes sat inside 3.14–4.92, so the
+     dot column read uniform and rest stopped being the quiet one the design
+     made it.  neutral-400 is one rung above the designed neutral-300: it
+     keeps the recession, a shade more visible than the design drew it.
+     Deliberately below 3:1 — every dot now carries its lane as text, so no
+     information depends on the colour. */
+  --lane-rest:var(--color-neutral-400);                 /* 1.50 — decorative */
 
   /* Growth dots.  A live dot is the data, so it owes 3.0: --color-accent is
-     2.69, accent-600 is 3.35.  The idle dot is neutral-300 in the design,
-     which measures 1.11 and is effectively invisible; 600 is 3.21. */
+     2.69, accent-600 is 3.35.
+     The idle dot is the user's other call.  The design made a missed day
+     nearly vanish (neutral-300, 1.11) so that the growing accent run is the
+     whole story; at 600 the misses were assertive greys at almost the weight
+     of a live dot, which inverts that.  neutral-400 recedes without
+     disappearing.  Deliberately below 3:1 — the row's aria-label states the
+     tally and the run in words, so nothing here is carried by colour. */
   --dot-live:var(--color-accent-600);
-  --dot-idle:var(--color-neutral-600);
+  --dot-idle:var(--color-neutral-400);                  /* 1.50 — decorative */
 
   /* A boundary that is the ONLY thing identifying a control — the note input,
      the unchecked tick, the month arrows — owes 3.0.  --color-divider
@@ -419,7 +430,7 @@ svg{display:block}
 .row.is-now{background:var(--color-accent-200)}
 .row .when{text-align:right;font-size:12.5px;color:var(--text-muted);padding-top:3px;
   font-variant-numeric:tabular-nums}
-.when span{display:block;white-space:nowrap}
+.row .when span{display:block;white-space:nowrap}
 .row .body{min-width:0;display:flex;gap:var(--space-3);align-items:flex-start}
 .lane-dot{width:9px;height:9px;flex:none;border-radius:50%;margin-top:8px;
   background:var(--lane,transparent)}
