@@ -31,6 +31,31 @@ export function computeStreak(progress, todayIso) {
   return n;
 }
 
+/* The growth dots under the streak number — the design's growthVals().
+
+   Fourteen days ending on todayIso, walked oldest first. A complete day
+   extends the run and its dot grows with it; an incomplete day resets the run
+   to zero and drops to the fixed small idle dot. The run deliberately starts
+   at 0 at the left edge of the window rather than being seeded from earlier
+   history: the row reads as "the last fourteen days", not as a slice of a
+   longer chain, and the streak numeral beside it already carries the true
+   total.
+
+   "Complete" is the same s && w test the streak uses — sleep is tracked but
+   does not carry the chain. Sizes are in px: 10 + 2.4 per day of run, capped
+   at 30, and a flat 6 for a missed day. */
+export function growthVals(progress, todayIso, days = 14) {
+  const out = [];
+  let run = 0;
+  for (let i = days - 1; i >= 0; i--) {
+    const date = addDays(todayIso, -i);
+    const done = complete(progress[date]);
+    run = done ? run + 1 : 0;
+    out.push({ date, complete: done, run, size: done ? Math.min(10 + run * 2.4, 30) : 6 });
+  }
+  return out;
+}
+
 /* Which queued dates a completed push may safely clear. A date whose record
    changed while the push was in flight must stay queued: the body was
    serialised before that change, so clearing it by date would strand the

@@ -6,9 +6,9 @@
 <title>The Weekly Innings — Schedule &amp; Progress Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Caprasimo:wght@400&family=Figtree:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#10261F">
+<meta name="theme-color" content="#f5ead8">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,151 +17,190 @@
 </head>
 <body>
 
-<div class="wrap">
+<div class="page">
 
-  <!-- 1 · NOW — what is happening this minute, before anything else -->
-  <div class="now ledger" id="nowBanner" aria-live="polite"></div>
+  <!-- Decoration only. -->
+  <div class="blob blob-1" aria-hidden="true"></div>
+  <div class="blob blob-2" aria-hidden="true"></div>
 
-  <main>
+  <div class="wrap">
 
-    <!-- 2 · TODAY — the only part of the page you touch -->
-    <section class="scorecard" aria-label="Today’s scorecard">
-      <div class="sc-head">
-        <h1 class="t-body"><span id="scDate"></span></h1>
-        <button id="backToday" class="t-time" type="button" style="display:none">back to today</button>
-      </div>
+    <header class="site-head">
+      <h1 class="brand">Weekly Innings</h1>
+      <!-- NOW is a pill in the header now, not a full-width strip. It is still
+           the aria-live region, and renderNow still only touches it when the
+           sentence itself changes. -->
+      <div class="now-pill" id="nowBanner" aria-live="polite"></div>
+      <p class="season">Season 2026 · Pune</p>
+    </header>
 
-      <div class="ticks">
-        <button class="tick" id="t-s" type="button">
-          <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12.6 9.4 18 20 6.6"/></svg></span>
-          <span class="lbl t-body">Study hour</span>
-        </button>
-        <button class="tick" id="t-w" type="button">
-          <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12.6 9.4 18 20 6.6"/></svg></span>
-          <span class="lbl t-body">Workout</span>
-        </button>
-        <button class="tick" id="t-z" type="button">
-          <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12.6 9.4 18 20 6.6"/></svg></span>
-          <span class="lbl t-body">Sleep by 11</span>
-        </button>
-      </div>
+    <main>
 
-      <label class="note-row">
-        <span class="note-lbl t-note">What did you cover?</span>
-        <input id="noteInput" class="note-input" type="text" maxlength="140"
-               placeholder="one line — this becomes your revision log" autocomplete="off">
-      </label>
+      <!-- 1 · HERO — the run, and the only part of the page you touch -->
+      <section class="hero" aria-label="Today">
 
-      <p class="streak">
-        <b id="streak" class="t-score">0</b>
-        <span class="t-label">day streak<br>study + workout</span>
+        <div class="streak-card">
+          <div class="streak-top">
+            <span class="streak-kicker">Growing</span>
+            <!-- The exam countdown is a line in this card now, and stays
+                 empty once every exam is past. -->
+            <span class="exam-line" id="examLine"></span>
+          </div>
+          <div class="streak-row">
+            <b class="streak-num" id="streak">0</b>
+            <span class="streak-cap">days<br><span>study + workout</span></span>
+          </div>
+          <!-- Sizes and colours come from growthVals() in progress.js. -->
+          <div class="growth" id="growthDots" role="img" aria-label="Growth over the last fourteen days"></div>
+          <p class="growth-cap">Last fourteen days. A complete day makes the run grow.</p>
+        </div>
+
+        <div class="today-card scorecard">
+          <div class="today-head">
+            <h2 id="scDate">Today</h2>
+            <span class="today-date"><span id="scSub"></span>
+              <button id="backToday" type="button" style="display:none">back to today</button></span>
+          </div>
+
+          <div class="ticks">
+            <button class="tick" id="t-s" type="button" aria-pressed="false">
+              <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12.6 9.4 18 20 6.6"/></svg></span>
+              <span class="lbl">Study hour</span>
+              <span class="hint">6:45 am</span>
+            </button>
+            <button class="tick" id="t-w" type="button" aria-pressed="false">
+              <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12.6 9.4 18 20 6.6"/></svg></span>
+              <span class="lbl">Workout</span>
+              <span class="hint">7:15 pm</span>
+            </button>
+            <button class="tick" id="t-z" type="button" aria-pressed="false">
+              <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12.6 9.4 18 20 6.6"/></svg></span>
+              <span class="lbl">Sleep by 11</span>
+              <span class="hint">11:00 pm</span>
+            </button>
+          </div>
+
+          <label class="note-row">
+            <span class="note-lbl">What did you cover?</span>
+            <input id="noteInput" class="note-input" type="text" maxlength="140"
+                   placeholder="one line — this becomes your revision log" autocomplete="off">
+          </label>
+
+          <!-- One line, two writers. setSaveStatus owns the first span,
+               describeIdle the second; the stylesheet draws the separator only
+               when both have something to say. -->
+          <p class="save-line"><span id="saveStatus"></span><span id="syncStatus"></span></p>
+        </div>
+
+      </section>
+
+      <!-- 2 · THE MONTH -->
+      <section class="cal" aria-label="Month">
+        <div class="cal-head">
+          <h2 id="mName"></h2>
+          <div class="cal-arrows">
+            <button id="prevM" type="button" aria-label="Previous month">‹</button>
+            <button id="nextM" type="button" aria-label="Next month">›</button>
+          </div>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+        <p class="cal-stats">
+          <span>Complete <b id="stFull">0</b></span>
+          <span>Study <b id="stS">0</b></span>
+          <span>Workout <b id="stW">0</b></span>
+        </p>
+      </section>
+
+      <!-- 3 · THIS WEEK -->
+      <section class="week" aria-label="This week">
+        <h2>This week</h2>
+        <div class="week-stats" id="weekStats"></div>
+        <ul class="week-notes" id="weekNotes"></ul>
+      </section>
+
+      <!-- 4 · THE WEEK'S SHAPE -->
+      <section class="shape" aria-label="The week’s shape">
+        <h2>The week’s shape</h2>
+
+        <div class="legend">
+          <span><i class="d-study"></i>Study</span>
+          <span><i class="d-work"></i>Work</span>
+          <span><i class="d-fit"></i>Workout</span>
+          <span><i class="d-cricket"></i>Cricket</span>
+          <span><i class="d-rest"></i>Rest</span>
+        </div>
+
+        <!-- Buttons, not an ARIA tab widget. role=tab/tablist/tabpanel was
+             declared with no aria-controls, no aria-labelledby and no arrow-key
+             navigation, promising a keyboard contract nothing implemented.
+             Toggle buttons keep Tab working and claim only what is true. -->
+        <div class="tabs" role="group" aria-label="Days of the week">
+          <button class="tab" type="button" data-d="mon" aria-controls="p-mon">Mon</button>
+          <button class="tab" type="button" data-d="tue" aria-controls="p-tue">Tue</button>
+          <button class="tab" type="button" data-d="wed" aria-controls="p-wed">Wed</button>
+          <button class="tab" type="button" data-d="thu" aria-controls="p-thu">Thu</button>
+          <button class="tab" type="button" data-d="fri" aria-controls="p-fri">Fri</button>
+          <button class="tab" type="button" data-d="sat" aria-controls="p-sat">Sat</button>
+          <button class="tab" type="button" data-d="sun" aria-controls="p-sun">Sun</button>
+        </div>
+
+        <div class="panel" id="p-mon"></div>
+        <div class="panel" id="p-tue"></div>
+        <div class="panel" id="p-wed"></div>
+        <div class="panel" id="p-thu"></div>
+        <div class="panel" id="p-fri"></div>
+        <div class="panel" id="p-sat"></div>
+        <div class="panel" id="p-sun"></div>
+      </section>
+
+      <!-- 5 · GROUND RULES -->
+      <section class="rules-sec" aria-label="Ground rules">
+        <h2>Ground rules</h2>
+        <div class="rules">
+          <div class="rule">
+            <span class="rule-n" aria-hidden="true">1</span>
+            <b>One subject per morning</b>
+            <p>Maths Tue, ML Wed, DL Thu, Stats Fri. Depth beats juggling — and the order follows the dependency chain: maths feeds ML, ML feeds DL.</p>
+          </div>
+          <div class="rule">
+            <span class="rule-n" aria-hidden="true">2</span>
+            <b>Intensity waves, not flat effort</b>
+            <p>Hard Mon &amp; Thu (home workouts), easy Tue &amp; Fri (walks), moderate Wed (run). Daily movement works only because the effort rises and falls.</p>
+          </div>
+          <div class="rule">
+            <span class="rule-n" aria-hidden="true">3</span>
+            <b>Friday tapers into the weekend</b>
+            <p>Walk and stretch on Friday, matches Sat–Sun. Eight hours of cricket is the real training load — the week is built around it.</p>
+          </div>
+          <div class="rule">
+            <span class="rule-n" aria-hidden="true">4</span>
+            <b>Mornings are for the hard subjects</b>
+            <p>One fresh hour at 6:45 beats three exhausted hours at 10 PM. AI &amp; ML is cumulative — the maths must be understood, not memorised.</p>
+          </div>
+          <div class="rule">
+            <span class="rule-n" aria-hidden="true">5</span>
+            <b>Never miss twice</b>
+            <p>Missing one day is a rain delay, not a lost season. Don&rsquo;t break the chain — but if you do, never let it happen two days running. That single rule protects every streak.</p>
+          </div>
+          <div class="rule">
+            <span class="rule-n" aria-hidden="true">6</span>
+            <b>Sleep is the umpire</b>
+            <p>7.5 hours, non-negotiable. If soreness lingers past two days or match performance dips, swap a hard day for a walk — don&rsquo;t drop the habit.</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <footer>
+      <p>The Weekly Innings · Season 2026 · Pune</p>
+      <p class="export">
+        <button id="exportJson" type="button">Export JSON</button>
+        <button id="exportCsv" type="button">Export CSV</button>
       </p>
+    </footer>
 
-      <p class="sc-foot t-label">
-        <span id="examLine"></span>
-        <span class="status"><span id="saveStatus"></span><span id="syncStatus"></span></span>
-      </p>
-    </section>
-
-    <!-- 3 · SEASON STRIP — the month as a scorebook page -->
-    <section>
-      <h2 class="t-body">Season strip</h2>
-      <div class="cal-nav">
-        <button id="prevM" class="t-label" type="button" aria-label="Previous month">‹ Prev</button>
-        <div class="mname t-label" id="mName"></div>
-        <button id="nextM" class="t-label" type="button" aria-label="Next month">Next ›</button>
-      </div>
-      <div class="cal-grid" id="calGrid"></div>
-      <p class="cal-stats t-label">
-        <span>Complete <b id="stFull">0</b></span>
-        <span>Study <b id="stS">0</b></span>
-        <span>Workout <b id="stW">0</b></span>
-      </p>
-    </section>
-
-    <!-- 4 · THIS WEEK -->
-    <section>
-      <h2 class="t-body">This week</h2>
-      <div class="week-stats" id="weekStats"></div>
-      <ul class="week-notes" id="weekNotes"></ul>
-    </section>
-
-    <!-- 5 · SCHEDULE — reference, deliberately below the fold -->
-    <section>
-      <h2 class="t-body">Schedule</h2>
-
-      <div class="legend t-label">
-        <span><i class="d-study"></i>Study</span>
-        <span><i class="d-work"></i>Work</span>
-        <span><i class="d-fit"></i>Workout</span>
-        <span><i class="d-cricket"></i>Cricket</span>
-        <span><i class="d-rest"></i>Rest</span>
-      </div>
-
-      <!-- Buttons, not an ARIA tab widget. role=tab/tablist/tabpanel was
-           declared with no aria-controls, no aria-labelledby and no arrow-key
-           navigation, promising a keyboard contract nothing implemented.
-           Toggle buttons keep Tab working and claim only what is true. -->
-      <div class="tabs" role="group" aria-label="Days of the week">
-        <button class="tab t-label" type="button" data-d="mon" aria-controls="p-mon">Mon</button>
-        <button class="tab t-label" type="button" data-d="tue" aria-controls="p-tue">Tue</button>
-        <button class="tab t-label" type="button" data-d="wed" aria-controls="p-wed">Wed</button>
-        <button class="tab t-label" type="button" data-d="thu" aria-controls="p-thu">Thu</button>
-        <button class="tab t-label" type="button" data-d="fri" aria-controls="p-fri">Fri</button>
-        <button class="tab t-label" type="button" data-d="sat" aria-controls="p-sat">Sat</button>
-        <button class="tab t-label" type="button" data-d="sun" aria-controls="p-sun">Sun</button>
-      </div>
-
-      <div class="panel" id="p-mon"></div>
-      <div class="panel" id="p-tue"></div>
-      <div class="panel" id="p-wed"></div>
-      <div class="panel" id="p-thu"></div>
-      <div class="panel" id="p-fri"></div>
-      <div class="panel" id="p-sat"></div>
-      <div class="panel" id="p-sun"></div>
-    </section>
-
-    <!-- 6 · MATCH RULES -->
-    <section>
-      <h2 class="t-body">Match rules</h2>
-      <div class="rule-grid">
-        <div class="rule">
-          <b class="t-body">One subject per morning</b>
-          <p class="t-note">Maths Tue, ML Wed, DL Thu, Stats Fri. Depth beats juggling — and the order follows the dependency chain: maths feeds ML, ML feeds DL.</p>
-        </div>
-        <div class="rule">
-          <b class="t-body">Intensity waves, not flat effort</b>
-          <p class="t-note">Hard Mon &amp; Thu (home workouts), easy Tue &amp; Fri (walks), moderate Wed (run). Daily movement works only because the effort rises and falls.</p>
-        </div>
-        <div class="rule">
-          <b class="t-body">Friday tapers into the weekend</b>
-          <p class="t-note">Walk and stretch on Friday, matches Sat–Sun. Eight hours of cricket is the real training load — the week is built around it.</p>
-        </div>
-        <div class="rule">
-          <b class="t-body">Mornings are for the hard subjects</b>
-          <p class="t-note">One fresh hour at 6:45 beats three exhausted hours at 10 PM. AI &amp; ML is cumulative — the maths must be understood, not memorised.</p>
-        </div>
-        <div class="rule">
-          <b class="t-body">Never miss twice</b>
-          <p class="t-note">Missing one day is a rain delay, not a lost season. Don&rsquo;t break the chain — but if you do, never let it happen two days running. That single rule protects every streak.</p>
-        </div>
-        <div class="rule">
-          <b class="t-body">Sleep is the umpire</b>
-          <p class="t-note">7.5 hours, non-negotiable. If soreness lingers past two days or match performance dips, swap a hard day for a walk — don&rsquo;t drop the habit.</p>
-        </div>
-      </div>
-    </section>
-
-  </main>
-
-  <footer>
-    <p class="t-label">The Weekly Innings · Season 2026 · Pune</p>
-    <p class="export">
-      <button id="exportJson" class="t-label" type="button">Export JSON</button>
-      <button id="exportCsv" class="t-label" type="button">Export CSV</button>
-    </p>
-  </footer>
-
+  </div>
 </div>
 
 <script type="module" src="app.js"></script>

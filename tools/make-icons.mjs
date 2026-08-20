@@ -1,10 +1,13 @@
-/* Generates the scoreboard icons: linseed digits on pitch green.
+/* Generates the scoreboard icons: sand digits on deep terracotta.
    Run: node tools/make-icons.mjs   (no dependencies) */
 import { deflateSync, crc32 } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
-const PITCH = [0x10, 0x26, 0x1f];   /* --field  #10261F */
-const AMBER = [0xe2, 0xa3, 0x2b];   /* --linseed #E2A32B */
+/* The Organic pair the rest of the app already uses for a filled control
+   carrying a light label: accent-700 ground, --color-bg glyphs. 5.72:1, and
+   --color-bg is also the manifest's background_color. */
+const GROUND = [0x8c, 0x49, 0x1a];   /* --color-accent-700  #8C491A */
+const GLYPH  = [0xf5, 0xea, 0xd8];   /* --color-bg          #F5EAD8 */
 
 /* 5x7 glyphs, one string row per line, '#' = lit pixel. */
 const GLYPHS = {
@@ -59,9 +62,9 @@ function render(size, text) {
     if (gx >= 0 && gy >= 0 && gy < 7 && gx < cols) {
       const ch = text[Math.floor(gx / 6)];
       const col = gx % 6;
-      if (col < 5 && GLYPHS[ch] && GLYPHS[ch][gy][col] === '#') return AMBER;
+      if (col < 5 && GLYPHS[ch] && GLYPHS[ch][gy][col] === '#') return GLYPH;
     }
-    return PITCH;
+    return GROUND;
   });
 }
 

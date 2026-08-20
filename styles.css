@@ -1,301 +1,500 @@
 /* ============================================================================
-   The Weekly Innings — design system
+   The Weekly Innings — "Organic"
 
-   Read in this order:  1 tokens · 2 reset · 3 type roles · 4 the ledger
-   gutter · 5 components.  Components come last so that a state class on a
-   component (.tab.on, .subj) settles a tie with a type role by source order
-   rather than by piling on specificity.  No declaration here is forced with
-   an importance flag, and nothing is nested deeper than two classes.
+   Read in this order:  1 tokens · 2 reset · 3 frame · 4 components ·
+   5 response · 6 motion.  Every colour literal lives in the :root block;
+   nothing past section 1 writes a hex.  Nothing is forced with an
+   importance flag.
+
+   Section 1 is the design system's own file, verbatim, with two exceptions
+   noted inline (color-mix, and the contrast-stepped roles at the end).
+   Where a role had to move off its designed value to clear a WCAG floor it
+   is stepped down its OWN ramp, hue unchanged, and annotated with the ratio
+   against the ground the element actually sits on — --color-bg and
+   --color-surface are different grounds and the numbers differ.
    ========================================================================= */
 
 /* --- 1 · Tokens ---------------------------------------------------------- */
 :root{
-  /* Colour — two related warm accents against a green-cast neutral,
-     deliberately not "near-black plus one neon".
-     Measured against --field (WCAG 2.x relative luminance):
-       --chalk 12.89:1 · --linseed 7.21:1 · --twilight 5.67:1            */
-  --field:#10261F;      /* deep pitch, the page ground */
-  --crease:#17352B;     /* raised card surface */
-  --chalk:#ECE7D9;      /* warm off-white, primary text */
-  --linseed:#E2A32B;    /* accent: oiled-willow amber, duller than neon on purpose */
-  --leather:#CA4E35;    /* ball red: the workout channel only, never ink.
-                           3.53:1 on --field, clearing the 3:1 graphics floor. */
-  --twilight:#87A093;   /* secondary text, green-cast so the page reads tonal */
-  --rule:rgba(135,160,147,.22);   /* the season-strip hairlines, and nothing
-                                     else on the page */
-  --edge:#6C897A;       /* the boundary that identifies an interactive component,
-                           and the tick's unchecked-state indicator. Held to the
-                           3:1 graphics floor: 3.48:1 on --crease, 4.17:1 on
-                           --field. Deliberately quieter than --twilight, so a
-                           border never shouts as loud as the text it frames. */
+  --color-bg:#f5ead8;
+  --color-surface:#ebddc5;
+  --color-text:#201e1d;
+  --color-accent:#c67139;
+  --color-accent-2:#7a8a5e;
+  /* The system writes this as color-mix(in srgb, #201e1d 16%, transparent).
+     Spelled as rgba here because an unsupported color-mix makes the custom
+     property invalid at computed-value time, which resolves to `inherit` and
+     paints a near-black border — and the primary device for this app is an
+     iPhone.  The composite is identical: #d3c9ba on --color-bg. */
+  --color-divider:rgba(32,30,29,.16);
 
-  /* Lanes — the five channels the week is built from. Cricket is --chalk
-     because cricket is played in whites; rest is the faintest thing here
-     because it is also the most common. */
-  --lane-study:var(--linseed);
-  --lane-work:var(--twilight);
-  --lane-fit:var(--leather);
-  --lane-cricket:var(--chalk);
-  --lane-rest:rgba(135,160,147,.65);   /* the lowest step that still clears the
-                                          3:1 graphics floor (3.20:1), so rest
-                                          stays the quietest lane on the page */
+  /* Tonal ramps — generated in OKLCH on one shared lightness scale, so the
+     same step of any role matches the others in visual value. */
+  --color-neutral-100:#f9f4ed;
+  --color-neutral-200:#eee7db;
+  --color-neutral-300:#dcd3c4;
+  --color-neutral-400:#c0b6a5;
+  --color-neutral-500:#a19786;
+  --color-neutral-600:#82796a;
+  --color-neutral-700:#645c50;
+  --color-neutral-800:#474238;
+  --color-neutral-900:#2e2b25;
 
-  /* Type */
-  --ui:'Archivo',system-ui,sans-serif;
-  --prose:'Source Serif 4',Georgia,serif;
+  --color-accent-100:#fff2eb;
+  --color-accent-200:#ffe1d0;
+  --color-accent-300:#ffc6a5;
+  --color-accent-400:#f6a06b;
+  --color-accent-500:#d67f48;
+  --color-accent-600:#b2622d;
+  --color-accent-700:#8c491a;
+  --color-accent-800:#643312;
+  --color-accent-900:#402310;
 
-  /* Spacing scale — every margin and padding on the page comes from here */
-  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
+  --color-accent-2-100:#f0fae1;
+  --color-accent-2-200:#e1eecc;
+  --color-accent-2-300:#ccdbb2;
+  --color-accent-2-400:#aebf92;
+  --color-accent-2-500:#8fa073;
+  --color-accent-2-600:#728157;
+  --color-accent-2-700:#56633f;
+  --color-accent-2-800:#3d472b;
+  --color-accent-2-900:#272e1b;
 
-  /* The ledger gutter: the fixed left column that carries WHEN */
-  --gutter:56px;
-  --radius:10px;
+  --font-heading:'Caprasimo',system-ui,sans-serif;
+  --font-heading-weight:400;
+  --font-body:'Figtree',system-ui,sans-serif;
 
-  /* Component metrics */
-  --wrap:760px;         /* measure: ~70 characters of Source Serif at 15.5px */
-  --mark:36px;          /* the tick's check box */
-  --pip:4px;            /* one bar in a season-strip cell */
+  --space-1:4.4px;
+  --space-2:8.8px;
+  --space-3:13.2px;
+  --space-4:17.6px;
+  --space-6:26.4px;
+  --space-8:35.2px;
+  --space-section:52px;
+
+  --radius-sm:8px;
+  --radius-md:16px;
+  --radius-lg:28px;
+  --radius-card:32px;    /* the system's rounded-frame override */
+  --radius-row:22px;
+  --radius-pill:999px;
+
+  /* Elevation — soft ink-tinted shadows on this light ground.  Same rgba
+     substitution as --color-divider, same reason. */
+  --shadow-sm:0 1px 2px rgba(46,43,37,.14);
+  --shadow-md:0 3px 10px rgba(46,43,37,.16);
+  --shadow-lg:0 12px 32px rgba(46,43,37,.22);
+
+  /* -- Roles stepped for contrast ---------------------------------------
+     Each of these is the design's role moved down its own ramp until it
+     clears its floor.  Nothing else about them changes. */
+
+  /* The design sets 12px–12.5px meta text in neutral-600, which measures
+     3.61 on --color-bg and 3.21 on --color-surface; both are under 4.5.
+     700 measures 5.53 and 4.92 and covers both grounds with one token. */
+  --text-muted:var(--color-neutral-700);
+  /* Future calendar dates: neutral-500 measures 2.15 inside a --color-surface
+     cell.  600 only reaches 3.21, so 13px numerals take 700 too (4.92).
+     Hierarchy against a past date survives — --color-text is 11.99 there. */
+  --text-future:var(--color-neutral-700);
+
+  /* Filled controls carrying a --color-bg label: the done tick, the selected
+     day tab, a complete calendar day, the subject pill, Export CSV.  --color-bg
+     on --color-accent is 3.03, and --color-bg is already the lightest colour
+     in the system, so the text cannot move — the fill is the half that does.
+     accent-600 reaches only 3.77; accent-700 is 5.72. */
+  --fill-strong:var(--color-accent-700);
+  --fill-strong-ink:var(--color-bg);
+  --fill-strong-hover:var(--color-accent-800);          /* 8.72 */
+  --fill-strong-hint:var(--color-accent-200);           /* 5.49 on accent-700 */
+
+  /* Display numerals — the streak and the four week stats.  --color-accent
+     measures 2.69 on --color-surface, under the 3.0 large-text floor;
+     accent-600 is 3.35. */
+  --numeral:var(--color-accent-600);
+
+  /* Calendar pips.  All three sit inside a --color-surface cell and all three
+     are the only carrier of which habits a past day scored, so the floor is
+     3.0.  The design's 500 rungs measure 2.24 / 2.11 / 2.15; the 600 rungs
+     measure 3.35 / 3.14 / 3.21. */
+  --pip-study:var(--color-accent-600);
+  --pip-workout:var(--color-accent-2-600);
+  --pip-sleep:var(--color-neutral-600);
+
+  /* Schedule lanes.  Same one-rung step for the three 500s.  Work and rest
+     are both greys and would collide at 600, so work takes 700 instead —
+     which preserves the design's ordering, work darker than rest, and leaves
+     rest the faintest lane on the page at the floor exactly. */
+  --lane-study:var(--color-accent-600);                 /* 3.35 */
+  --lane-work:var(--color-neutral-700);                 /* 4.92 */
+  --lane-fit:var(--color-accent-2-600);                 /* 3.14 */
+  --lane-cricket:var(--color-accent-2-700);             /* 4.82 — as designed */
+  --lane-rest:var(--color-neutral-600);                 /* 3.21 */
+
+  /* Growth dots.  A live dot is the data, so it owes 3.0: --color-accent is
+     2.69, accent-600 is 3.35.  The idle dot is neutral-300 in the design,
+     which measures 1.11 and is effectively invisible; 600 is 3.21. */
+  --dot-live:var(--color-accent-600);
+  --dot-idle:var(--color-neutral-600);
+
+  /* A boundary that is the ONLY thing identifying a control — the note input,
+     the unchecked tick, the month arrows — owes 3.0.  --color-divider
+     composites to 1.37 on both grounds and neutral-400 is 1.50, so those
+     three take neutral-600 (3.61 on --color-bg, 3.21 on --color-surface).
+     --color-divider stays exactly as designed everywhere it separates rather
+     than identifies: the notes list, the footer rule, the day-tab and effort
+     pill borders, all of which sit around text that is already legible. */
+  --edge:var(--color-neutral-600);
+
+  /* The system's focus ring is 2px of --color-accent, which is 2.69 against
+     --color-surface — and every focusable control on this page except the
+     month arrows and the export buttons sits on a surface card. */
+  --focus:var(--color-accent-600);                      /* 3.35 / 3.77 */
+
+  --selection:rgba(198,113,57,.30);   /* the system's ::selection wash */
+
+  --ok:var(--color-accent-2-700);                       /* 4.82 on --color-surface */
+  --warn:var(--color-accent-800);                       /* 7.75 on --color-surface */
 }
-@media (max-width:420px){ :root{ --gutter:44px } }
 
 /* --- 2 · Reset ----------------------------------------------------------- */
-*{margin:0;padding:0;box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;background:var(--color-bg)}
 body{
-  background:var(--field);
-  color:var(--chalk);
-  font-family:var(--prose);
-  font-size:15.5px;
+  margin:0;
+  background:var(--color-bg);
+  color:var(--color-text);
+  font-family:var(--font-body);
+  font-size:15px;
   line-height:1.55;
+  font-weight:400;
   overflow-wrap:break-word;
 }
-.wrap{max-width:var(--wrap);margin:0 auto;padding:var(--s5) var(--s4) var(--s8)}
+h1,h2,h3,h4,h5,h6{
+  font-family:var(--font-heading);
+  font-weight:var(--font-heading-weight);
+  line-height:1.12;
+  letter-spacing:-.015em;
+  margin:0 0 var(--space-2);
+}
+h2{font-size:32px}
+h3{font-size:25px}
+p{margin:0 0 var(--space-3)}
+ul{list-style:none;margin:0;padding:0}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 input{font:inherit}
-ul{list-style:none}
 svg{display:block}
+::selection{background:var(--selection)}
 
-/* One focus treatment, applied once. */
-button:focus-visible,input:focus-visible,a:focus-visible{
-  outline:2px solid var(--linseed);outline-offset:2px
+:focus{outline:none}
+/* One rule, covering every interactive element on the page: the three ticks,
+   the seven day tabs, every calendar cell, the note input, both month arrows
+   and both export buttons. */
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* --- 3 · Page frame ------------------------------------------------------ */
+.page{
+  position:relative;
+  min-height:100vh;
+  overflow:hidden;
+  background:var(--color-bg);
+  color:var(--color-text);
 }
+/* Decoration only.  Both are aria-hidden in the markup and take no pointer
+   events.  Kept as the design specifies them — a blurred solid disc reads as
+   a flat field with a feathered rim, which a radial gradient does not
+   reproduce — and they are static, never animated and never re-laid-out, so
+   the blur rasterises once rather than per frame. */
+.blob{position:absolute;border-radius:50%;opacity:.4;filter:blur(40px);pointer-events:none}
+.blob-1{top:-540px;right:-460px;width:900px;height:900px;background:var(--color-accent-200)}
+.blob-2{top:760px;left:-420px;width:620px;height:620px;background:var(--color-accent-2-200)}
 
-/* --- 3 · Type roles ------------------------------------------------------ */
-/* Six roles. Archivo carries the utility voice through its width axis:
-   Expanded for scores, Condensed for times and labels. */
-.t-score{font-family:var(--ui);font-weight:800;font-variation-settings:'wdth' 125,'wght' 800;
-  font-size:clamp(2rem,7vw,2.8rem);line-height:.92;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
-.t-title{font-family:var(--ui);font-weight:800;font-variation-settings:'wdth' 110,'wght' 800;
-  font-size:clamp(1.4rem,5vw,2rem);line-height:1.05;text-transform:uppercase;font-variant-numeric:tabular-nums}
-/* Micro-caps are furniture, not a universal label style: status flags, the
-   scorebook's own markings, stat captions, data chips. Anything the reader
-   reads as language — headings, control labels, questions — is set in the
-   serif. Archivo is for numbers, times and furniture; the serif is for words. */
-.t-label{font-family:var(--ui);font-weight:700;font-variation-settings:'wdth' 75,'wght' 700;
-  font-size:11px;line-height:1.45;letter-spacing:.18em;text-transform:uppercase;color:var(--twilight)}
-/* .18em of tracking hangs off the last glyph, so anything centred sits half a
-   space left of true centre. Put it back. */
-.tab,.cal-dow,.week-stat span{text-indent:.18em}
-.t-time{font-family:var(--ui);font-weight:500;font-variation-settings:'wdth' 70,'wght' 500;
-  font-size:13px;line-height:1.3;font-variant-numeric:tabular-nums;color:var(--twilight)}
-.t-body{font-family:var(--prose);font-size:15.5px;line-height:1.55}
-.t-note{font-family:var(--prose);font-size:14px;line-height:1.5;color:var(--twilight)}
+.wrap{position:relative;max-width:1040px;margin:0 auto;padding:var(--space-6) var(--space-4) 70px}
 
-/* Weight is assigned per element, never on .t-body itself: the role is also the
-   voice for prose, and prose stays at 400. Every one of these was previously
-   relying on a UA default (h1/h2/b/strong) or, in the ticks' case, on nothing at
-   all — a <span> inherits 400, which left the page's three primary controls
-   lighter than its paragraphs. 600 is the ceiling of the loaded wght axis. */
-.sc-head h1,
-main > section > h2,
-.rule b,
-.tick .lbl,
-.row .what strong,
-.now .what-now{font-weight:600}
+/* --- 4 · Components ------------------------------------------------------ */
 
-/* --- 4 · The ledger gutter ----------------------------------------------- */
-/* One structural device: a fixed left column carrying WHEN. Used by the NOW
-   strip, every timeline row, and the week's note list. The coloured lane is a
-   2px border on the content cell, not a third column to align at 380px. */
-.ledger{display:grid;grid-template-columns:var(--gutter) 1fr;gap:0 var(--s4);align-items:start}
-.ledger > .when{text-align:right;padding-top:2px}
-.when span{display:block;white-space:nowrap}
-/* The lane bar is drawn only where there is a lane. A ledger row without one
-   (the week's notes) keeps the 2px so the text column still aligns, but draws
-   nothing — the same reason the Match-rule cards lost their bar. */
-.ledger > .what{min-width:0;border-left:2px solid var(--lane, transparent);padding-left:var(--s4)}
+/* 4.1 Header -------------------------------------------------------------- */
+.site-head{display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap;
+  margin-bottom:var(--space-8)}
+.brand{font-family:var(--font-heading);font-weight:var(--font-heading-weight);
+  font-size:18px;letter-spacing:-.015em;line-height:1.12;margin:0 auto 0 0}
 
-/* --- 5 · Components ------------------------------------------------------ */
+/* The NOW banner is this pill now, not a full-width strip.  It is still the
+   aria-live region and renderNow still only touches it when the sentence
+   itself changes. */
+.now-pill{display:inline-flex;align-items:center;gap:var(--space-2);min-width:0;
+  background:var(--color-accent-2-100);color:var(--color-accent-2-800);
+  border-radius:var(--radius-pill);padding:7px 14px 7px 10px;font-size:12.5px}
+.now-pill:empty{display:none}
+.now-dot{width:8px;height:8px;flex:none;border-radius:50%;
+  background:var(--color-accent-2-600)}                 /* 3.90 on accent-2-100 */
+.now-pill b{font-weight:700}
+/* The design only draws the pill for a block in progress. When nothing is
+   running the word already says "Next", so the dot goes hollow rather than
+   keeping a filled indicator that would still read as live. */
+.now-pill.next .now-dot{background:transparent;box-shadow:inset 0 0 0 2px var(--color-accent-2-600)}
+.now-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.season{margin:0;font-size:12.5px;color:var(--text-muted)}
 
-/* NOW strip — the first thing on the page. */
-.now{padding-bottom:var(--s6)}
-.now .what{--lane:var(--linseed)}
-.now.next .what{--lane:var(--edge)}
-.now .state{display:block;color:var(--linseed)}
-.now.next .state{color:var(--twilight)}
-.now .what-now{display:block;margin-top:var(--s1)}
+/* 4.2 Hero ---------------------------------------------------------------- */
+.hero{display:grid;grid-template-columns:minmax(240px,.72fr) minmax(320px,1fr);
+  gap:var(--space-8);align-items:start;margin-bottom:var(--space-section)}
 
-/* Sections are separated by space, never by a rule: the only rules on this
-   page are the scorebook hairlines in the season strip. */
-main > section + section{margin-top:var(--s8)}
-main > section > h2{margin-bottom:var(--s4)}
+.streak-card{background:var(--color-surface);border-radius:var(--radius-card);
+  padding:var(--space-6);box-shadow:var(--shadow-sm)}
+.streak-top{display:flex;align-items:baseline;justify-content:space-between;
+  flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-4)}
+.streak-kicker{font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--color-accent-700)}                        /* 5.09 on --color-surface */
+/* The exam countdown is a line in this card now, not a plate of its own, and
+   stays empty once every exam is past. */
+.exam-line{font-size:12.5px;color:var(--text-muted)}
+.streak-row{display:flex;align-items:flex-end;gap:var(--space-3)}
+.streak-num{font-family:var(--font-heading);font-weight:var(--font-heading-weight);
+  font-size:clamp(72px,14vw,116px);line-height:.82;letter-spacing:-.02em;
+  color:var(--numeral);font-variant-numeric:tabular-nums}
+.streak-cap{font-size:15px;line-height:1.25;padding-bottom:8px}
+.streak-cap span{color:var(--text-muted)}
 
-/* Today's scorecard ------------------------------------------------------- */
-/* The card carries no plate of its own. In a two-green palette a surface
-   change is only 1.20:1, so a plate here would have made the ticks the
-   recessed objects on a page whose whole purpose is tapping them. The ticks
-   take the raised surface instead, and the card is just the page. */
-.scorecard{display:grid;gap:var(--s5)}
-.sc-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;
-  gap:var(--s2) var(--s4)}
-.sc-head button{color:var(--linseed);text-decoration:underline;text-underline-offset:.2em}
+/* Fourteen dots.  Size and colour both come from growthVals in progress.js;
+   this only lays them out. */
+.growth{display:flex;align-items:flex-end;gap:5px;height:44px;margin-top:var(--space-6)}
+/* Only the width is set inline; aspect-ratio derives the height, so a dot
+   stays a circle even when flex has to compress it.  The design specifies
+   both the sizes and the 5px gap, and at a full fourteen-day run they total
+   411px against roughly 353px of card — so the row is allowed to shrink
+   rather than overflow.  Below that it never shrinks and renders exactly as
+   designed. */
+.growth i{flex:0 1 auto;min-width:6px;aspect-ratio:1;border-radius:50%;display:block;
+  background:var(--dot-idle)}
+.growth i.live{background:var(--dot-live)}
+.growth-cap{margin:var(--space-3) 0 0;font-size:12.5px;color:var(--text-muted)}
 
-/* The three ticks are the hero: three across at every width, 96px tall,
-   thumb-sized marks. */
-.ticks{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2)}
-.tick{display:flex;flex-direction:column;justify-content:space-between;align-items:flex-start;
-  gap:var(--s3);min-height:calc(var(--s8) + var(--s6));min-width:0;
-  padding:var(--s3);border:1px solid var(--edge);border-radius:var(--radius);
-  background:var(--crease);text-align:left}
-.tick:hover{border-color:var(--twilight)}
-.tick.done{border-color:var(--linseed)}
-/* The label names the control and never dims: the state lives in the mark. */
-.tick .lbl{line-height:1.25}
-.tick .mark{width:var(--mark);height:var(--mark);flex:none;
-  border:2px solid var(--edge);border-radius:var(--s2);display:grid;place-items:center;
-  transition:background-color .16s linear,border-color .16s linear}
-.tick.done .mark{background:var(--linseed);border-color:var(--linseed)}
-.tick .mark svg{width:24px;height:24px}
-/* The page's one motion moment: the check draws on. */
-.tick .mark path{stroke:var(--field);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;
-  stroke-dasharray:24;stroke-dashoffset:24;transition:stroke-dashoffset .26s cubic-bezier(.2,.8,.3,1)}
-.tick.done .mark path{stroke-dashoffset:0}
+.today-card{min-width:0}
+.today-head{display:flex;align-items:baseline;justify-content:space-between;
+  flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-3)}
+.today-head h2{margin:0}
+.today-date{font-size:13px;color:var(--text-muted)}
+.today-date button{color:var(--color-accent-700);text-decoration:underline;
+  text-underline-offset:.2em;font-size:13px}
 
-.note-row{display:block}
-.note-lbl{display:block;margin-bottom:var(--s2)}
-.note-input{width:100%;background:var(--field);border:1px solid var(--edge);border-radius:var(--s2);
-  padding:var(--s3) var(--s4);color:var(--chalk);font-family:var(--prose);font-size:15.5px}
-.note-input::placeholder{color:var(--twilight)}
-.note-input:focus-visible{border-color:var(--linseed)}
+.ticks{display:grid;gap:var(--space-2)}
+.tick{display:flex;align-items:center;gap:var(--space-4);width:100%;min-height:76px;
+  padding:var(--space-3) var(--space-4);border-radius:var(--radius-pill);
+  border:1.5px solid var(--edge);background:var(--color-surface);color:var(--color-text);
+  font-size:17px;text-align:left;
+  transition:background-color .18s ease,border-color .18s ease}
+.tick:hover{border-color:var(--color-accent)}
+.tick .mark{width:44px;height:44px;flex:none;border-radius:50%;
+  border:2px solid var(--edge);background:transparent;display:grid;place-items:center}
+.tick .mark svg{width:26px;height:26px}
+.tick .mark path{stroke:transparent;stroke-width:2.75;fill:none;
+  stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:24;stroke-dashoffset:24;
+  transition:stroke-dashoffset .3s cubic-bezier(.2,.8,.3,1)}
+.tick .lbl{font-family:var(--font-heading);font-weight:var(--font-heading-weight);
+  font-size:20px;line-height:1.15;letter-spacing:-.015em}
+.tick .hint{margin-left:auto;font-size:12px;color:var(--text-muted)}
+/* Done.  The fill is the half that moved for contrast; the label did not. */
+.tick.done{background:var(--fill-strong);border-color:var(--fill-strong);
+  color:var(--fill-strong-ink)}
+.tick.done .mark{border-color:var(--fill-strong-ink);background:var(--fill-strong-ink)}
+.tick.done .mark path{stroke:var(--fill-strong);stroke-dashoffset:0}
+.tick.done .hint{color:var(--fill-strong-hint)}         /* 5.49 */
 
-/* The streak is the score, and it is counted in amber because it is the sum of
-   the amber days on the strip. Red would read as a warning. */
-.streak{display:flex;align-items:center;gap:var(--s4)}
-.streak b{color:var(--linseed)}
+.note-row{display:block;margin-top:var(--space-4)}
+.note-lbl{display:block;font-size:12px;margin-bottom:5px;color:var(--text-muted)}
+.note-input{width:100%;min-height:46px;padding:10px 18px;font-size:15px;
+  font-family:var(--font-body);color:var(--color-text);background:var(--color-surface);
+  border:1px solid var(--edge);border-radius:var(--radius-pill);
+  caret-color:var(--color-accent)}
+.note-input::placeholder{color:var(--text-muted)}
 
-.sc-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:var(--s2) var(--s4)}
-.sc-foot .status{display:flex;gap:var(--s4)}
+/* Save and sync share this one line.  Each writer keeps its own span and the
+   separator is drawn only when both have something to say, so neither
+   function had to learn about the other. */
+.save-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 5px;
+  margin:var(--space-2) 0 0;font-size:12px;color:var(--text-muted);min-height:1.2em}
+#saveStatus:not(:empty) + #syncStatus:not(:empty)::before{content:'·';margin-right:5px}
 
-/* Season strip ------------------------------------------------------------ */
-/* The month as a scorebook page. Hairlines separate rows and appear nowhere
-   else. Complete days sit flush, so a streak reads as one continuous bar. */
-.cal-nav{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);margin-bottom:var(--s3)}
-.cal-nav button{padding:var(--s2) var(--s3);border-radius:var(--s2)}
-.cal-nav button:hover{color:var(--chalk)}
-.cal-nav .mname{color:var(--chalk)}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:0;border-bottom:1px solid var(--rule)}
-.cal-dow{text-align:center;padding-bottom:var(--s2)}
-.cell{position:relative;aspect-ratio:1;min-width:0;border-top:1px solid var(--rule);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s1)}
-.cell.blank{cursor:default}
-.cell:not(.blank):hover .dnum{color:var(--chalk)}
-.cell.full{background:var(--linseed)}
-.cell.full .dnum{color:var(--field);font-variation-settings:'wdth' 90,'wght' 800}
-.cell.today{box-shadow:inset 0 0 0 1px var(--linseed)}
-.cell.sel{box-shadow:inset 0 0 0 2px var(--chalk)}
-/* On a completed day the cell is already --linseed, so an amber "today" ring
-   would vanish into it and a chalk one would sit at 1.79:1. Knock both out. */
-.cell.full.today,.cell.full.sel{box-shadow:inset 0 0 0 2px var(--field)}
-.mk{display:flex;align-items:flex-end;justify-content:center;gap:2px;height:var(--s3)}
-.mk i{width:var(--pip);height:100%;border-radius:1px;display:block}
-.mk .b-s{background:var(--linseed)}
-.mk .b-w{background:var(--leather)}
-.mk .b-z{background:var(--chalk)}
-/* The dot ball: a past day on which nothing was scored. */
-.mk .dot{color:var(--twilight);line-height:var(--s3)}
-.cal-stats{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s5);margin-top:var(--s4)}
-.cal-stats b{color:var(--chalk);font-variant-numeric:tabular-nums}
+/* 4.3 Month calendar ------------------------------------------------------ */
+.cal{margin-bottom:var(--space-section)}
+.cal-head{display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-4)}
+.cal-head h2{margin:0}
+.cal-arrows{display:flex;gap:var(--space-2)}
+.cal-arrows button{width:36px;height:36px;border-radius:50%;
+  border:1px solid var(--edge);background:transparent;color:var(--color-text);
+  font-family:var(--font-heading);font-size:14px;display:grid;place-items:center}
+.cal-arrows button:hover{background:var(--color-neutral-200)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--space-2);
+  max-width:470px}
+.cal-dow{text-align:center;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--text-muted);padding-bottom:var(--space-1)}
+.cell{position:relative;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;
+  background:var(--color-surface);color:var(--color-text);font-size:13px;font-weight:400;
+  min-width:0}
+.cell.blank{background:transparent;box-shadow:none;color:transparent;cursor:default}
+.dnum{line-height:1}
+.cell.future{color:var(--text-future)}
+/* A complete day is the strong fill so its numeral can stay --color-bg. */
+.cell.full{background:var(--fill-strong);color:var(--fill-strong-ink);font-weight:700}
+.cell.today{box-shadow:inset 0 0 0 2px var(--color-accent-2-600)}   /* 3.14 */
+/* The design has no selected-day state; the app does, because a calendar cell
+   loads that day into the scorecard. Ink, so it reads as a different fact
+   from the olive today-ring. */
+.cell.sel{box-shadow:inset 0 0 0 2px var(--color-text)}
+.cell.full.today,.cell.full.sel{box-shadow:inset 0 0 0 2px var(--fill-strong-ink)}
+.mk{position:absolute;bottom:5px;display:flex;gap:2.5px}
+.mk i{width:4px;height:4px;border-radius:50%;display:block}
+.mk .b-s{background:var(--pip-study)}
+.mk .b-w{background:var(--pip-workout)}
+.mk .b-z{background:var(--pip-sleep)}
+.cal-stats{display:flex;flex-wrap:wrap;gap:var(--space-2) 22px;margin:22px 0 0;
+  font-size:12.5px;color:var(--text-muted)}
+.cal-stats span{white-space:nowrap}
+.cal-stats b{font-weight:700;color:var(--color-text);font-variant-numeric:tabular-nums}
 
-/* This week --------------------------------------------------------------- */
-.week-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s2)}
-.week-stat{background:var(--crease);border-radius:var(--radius);padding:var(--s4) var(--s3);
-  text-align:center;min-width:0}
-.week-stat b{display:block;color:var(--linseed)}
-.week-stat span{display:block;margin-top:var(--s2)}
-.week-notes{margin-top:var(--s5)}
-.week-notes li{padding:var(--s3) 0}
+/* 4.4 This week ----------------------------------------------------------- */
+.week{margin-bottom:var(--space-section)}
+.week h2{margin:0 0 var(--space-4)}
+.week-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:var(--space-3)}
+.week-stat{background:var(--color-surface);border-radius:var(--radius-card);
+  padding:22px;text-align:center;min-width:0}
+.week-stat b{display:block;font-family:var(--font-heading);
+  font-weight:var(--font-heading-weight);font-size:38px;line-height:1;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--numeral)}
+.week-stat span{display:block;margin-top:var(--space-2);font-size:12.5px;
+  color:var(--text-muted)}
+.week-stat.s-fit b{color:var(--color-accent-2-700)}     /* 4.82 */
+.week-stat.s-sleep b{color:var(--color-neutral-700)}    /* 4.92 */
+.week-notes{margin:var(--space-6) 0 0;display:grid;gap:var(--space-1);max-width:640px}
+.week-notes li{display:grid;grid-template-columns:78px 1fr;gap:var(--space-4);
+  align-items:baseline;padding:11px 0;border-top:1px solid var(--color-divider)}
+.week-notes .when{font-size:12px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text-muted)}
+.week-empty{display:block;padding:11px 0;border-top:1px solid var(--color-divider);
+  font-size:13.5px;color:var(--text-muted)}
 
-/* Schedule ---------------------------------------------------------------- */
-.legend{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s4);margin-bottom:var(--s5)}
-.legend span{display:flex;align-items:center;gap:var(--s2)}
-.legend i{width:2px;height:14px;flex:none;display:block}
+/* 4.5 The week's shape ---------------------------------------------------- */
+.shape{margin-bottom:var(--space-section)}
+.shape h2{margin:0 0 var(--space-3)}
+.legend{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4);
+  margin-bottom:var(--space-4);font-size:12.5px;color:var(--text-muted)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.legend i{width:9px;height:9px;flex:none;border-radius:50%;display:block}
 .d-study{background:var(--lane-study)}
 .d-work{background:var(--lane-work)}
 .d-fit{background:var(--lane-fit)}
 .d-cricket{background:var(--lane-cricket)}
 .d-rest{background:var(--lane-rest)}
 
-.tabs{display:grid;grid-template-columns:repeat(7,1fr);gap:var(--s1);margin-bottom:var(--s5)}
-.tab{padding:var(--s3) var(--s1);border-radius:var(--s2);text-align:center;min-width:0}
-.tab:hover{color:var(--chalk)}
-.tab.on{background:var(--linseed);color:var(--field)}
-.panel{display:none}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:22px}
+.tab{border:1px solid var(--color-divider);background:transparent;color:var(--color-text);
+  border-radius:var(--radius-pill);padding:9px 18px;
+  font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:14px;
+  transition:background-color .16s ease}
+.tab:hover{border-color:var(--color-accent)}
+.tab.on{background:var(--fill-strong);color:var(--fill-strong-ink);
+  border-color:var(--fill-strong)}                      /* 5.72 */
+
+/* Each panel is the day card; only one is shown at a time. */
+.panel{display:none;background:var(--color-surface);border-radius:var(--radius-card);
+  padding:var(--space-6)}
 .panel.on{display:block}
+.day-head{display:flex;align-items:baseline;justify-content:space-between;
+  flex-wrap:wrap;gap:var(--space-2)}
+.day-head h3{margin:0}
+.tag{display:inline-flex;align-items:center;background:var(--color-accent-100);
+  color:var(--color-accent-800);border-radius:var(--radius-pill);
+  padding:4px 12px;font-size:11.5px}                    /* 9.46 */
+.day-note{max-width:62ch;margin:var(--space-2) 0 22px;font-size:14px;
+  color:var(--text-muted)}
+.blocks{display:grid;gap:2px}
 
-.day-head{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;
-  gap:var(--s2);margin-bottom:var(--s2)}
-.day-head .tag{color:var(--linseed)}
-.day-note{max-width:60ch;margin-bottom:var(--s5)}
-
-.row{padding:var(--s3) 0}
+.row{display:grid;grid-template-columns:96px 1fr;gap:var(--space-4);align-items:start;
+  padding:var(--space-3);border-radius:var(--radius-row);background:transparent}
+/* The block happening right now. */
+.row.is-now{background:var(--color-accent-200)}
+.row .when{text-align:right;font-size:12.5px;color:var(--text-muted);padding-top:3px;
+  font-variant-numeric:tabular-nums}
+.when span{display:block;white-space:nowrap}
+.row .body{min-width:0;display:flex;gap:var(--space-3);align-items:flex-start}
+.lane-dot{width:9px;height:9px;flex:none;border-radius:50%;margin-top:8px;
+  background:var(--lane,transparent)}
+.row .what{min-width:0}
+.row .what strong{font-weight:600;font-size:15.5px;display:inline}
+.row .what em{display:block;font-style:normal;margin-top:var(--space-1);
+  font-size:13.5px;color:var(--text-muted)}
 .row.lane-study{--lane:var(--lane-study)}
 .row.lane-work{--lane:var(--lane-work)}
 .row.lane-fit{--lane:var(--lane-fit)}
 .row.lane-cricket{--lane:var(--lane-cricket)}
 .row.lane-rest{--lane:var(--lane-rest)}
-.row .what strong{display:block}
-.row .what em{display:block;font-style:normal;margin-top:var(--s1)}
-.row.is-now{--lane:var(--linseed);background:var(--crease);border-radius:var(--radius);
-  margin:0 calc(var(--s3) * -1);padding-left:var(--s3);padding-right:var(--s3)}
-.row.is-now .when{color:var(--chalk)}
 
-/* Pills. Declared after .t-label so the state colour settles the tie by
-   source order rather than by extra specificity. */
-.subj{display:inline-block;margin-left:var(--s2);border-radius:20px;
-  padding:2px calc(var(--s2) - .18em) 2px var(--s2);
-  background:var(--linseed);color:var(--field);vertical-align:2px}
-.effort{display:inline-block;margin-left:var(--s2);border-radius:20px;
-  padding:2px calc(var(--s2) - .18em) 2px var(--s2);
-  border:1px solid var(--edge);vertical-align:2px}
-.effort.hard{border-color:var(--twilight);color:var(--chalk)}
-/* Three steps, because Match Rule #2 is about the wave: hard carries the
-   brightest border and the brightest ink, moderate keeps the default --edge
-   boundary, easy drops the boundary altogether and is left as quiet type. */
-.effort.easy{border-color:transparent}
+/* Pills inside a row.  Declared after the row so a state colour settles the
+   tie by source order rather than by extra specificity. */
+.subj{display:inline-flex;align-items:center;margin-left:var(--space-2);
+  background:var(--fill-strong);color:var(--fill-strong-ink);
+  border-radius:var(--radius-pill);padding:3px 11px;font-size:11.5px;vertical-align:2px}
+.effort{display:inline-flex;align-items:center;margin-left:var(--space-2);
+  border:1px solid var(--color-divider);color:var(--text-muted);
+  border-radius:var(--radius-pill);padding:2px 11px;font-size:11.5px;vertical-align:2px}
+.effort.hard{border-color:var(--color-accent-2-600);color:var(--color-accent-2-800)}
 
-/* Match rules ------------------------------------------------------------- */
-.rule-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s5) var(--s6)}
-.rule b{display:block;margin-bottom:var(--s2)}
+/* 4.6 Ground rules -------------------------------------------------------- */
+.rules-sec{margin-bottom:var(--space-section)}
+.rules-sec h2{margin:0 0 var(--space-4)}
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:var(--space-3)}
+.rule{background:var(--color-surface);border-radius:var(--radius-card);padding:22px;
+  display:flex;flex-direction:column;gap:var(--space-2)}
+.rule-n{width:30px;height:30px;flex:none;border-radius:50%;
+  background:var(--color-accent-2-200);color:var(--color-accent-2-800);
+  display:grid;place-items:center;
+  font-family:var(--font-heading);font-weight:var(--font-heading-weight);
+  font-size:14px}                                       /* 8.11 */
+.rule b{font-family:var(--font-heading);font-weight:var(--font-heading-weight);
+  font-size:18px;line-height:1.2;letter-spacing:-.015em}
+.rule p{margin:0;font-size:13.5px;color:var(--text-muted)}
 
-/* Footer ------------------------------------------------------------------ */
+/* 4.7 Footer -------------------------------------------------------------- */
 footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;
-  gap:var(--s4);margin-top:var(--s8)}
-.export{display:flex;gap:var(--s2)}
-.export button{border:1px solid var(--edge);border-radius:var(--s2);padding:var(--s2) var(--s3)}
-.export button:hover{color:var(--chalk);border-color:var(--twilight)}
+  gap:var(--space-4);padding-top:var(--space-6);border-top:1px solid var(--color-divider)}
+footer p{margin:0;font-size:12.5px;color:var(--text-muted)}
+.export{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.export button{border-radius:var(--radius-pill);padding:9px 18px;
+  font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:14px}
+#exportJson{border:1px solid var(--color-divider);background:transparent;
+  color:var(--color-text)}
+#exportJson:hover{background:var(--color-neutral-200)}
+#exportCsv{border:1px solid transparent;background:var(--fill-strong);
+  color:var(--fill-strong-ink)}                         /* 5.72 */
+#exportCsv:hover{background:var(--fill-strong-hover)}   /* 8.72 */
 
-/* --- 6 · Response -------------------------------------------------------- */
-@media (max-width:720px){
-  .rule-grid{grid-template-columns:1fr}
+/* --- 5 · Response -------------------------------------------------------- */
+/* The design exposes a `stack` prop for the hero; this is that, on a query. */
+@media (max-width:840px){
+  .hero{grid-template-columns:1fr;gap:var(--space-6)}
 }
-@media (max-width:480px){
-  .week-stats{grid-template-columns:repeat(2,1fr)}
+@media (max-width:560px){
+  .wrap{padding-left:var(--space-3);padding-right:var(--space-3)}
+  .streak-card,.panel{padding:var(--space-4)}
+  .rule,.week-stat{padding:var(--space-4)}
+  .row{grid-template-columns:72px 1fr;gap:var(--space-3);padding:var(--space-2)}
+  .tick{gap:var(--space-3);padding:var(--space-2) var(--space-3);min-height:68px}
+  .tick .mark{width:38px;height:38px}
+  .tick .hint{font-size:11px}
+  .cal-grid{gap:5px}
+  .week-notes li{grid-template-columns:64px 1fr;gap:var(--space-2)}
 }
-@media (max-width:420px){
-  main > section + section{margin-top:var(--s7)}
-  .tab{padding:var(--s3) 0}
-}
+
+/* --- 6 · Motion ---------------------------------------------------------- */
+/* Three transitions ship: the tick's fill and border, the check stroke, and
+   the day tab's fill.  All three are switched off here. */
 @media (prefers-reduced-motion:reduce){
-  .tick .mark{transition:none}
+  .tick{transition:none}
   .tick .mark path{transition:none}
+  .tab{transition:none}
 }
