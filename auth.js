@@ -82,8 +82,11 @@ export function loadSession(store) {
 }
 
 export function clearSession(store) {
-  const s = store || defaultStore();
-  try { s.removeItem(SESSION_KEY); s.removeItem(VERIFIER_KEY); } catch { /* storage off */ }
+  try {
+    const s = store || defaultStore();
+    s.removeItem(SESSION_KEY);
+    s.removeItem(VERIFIER_KEY);
+  } catch { /* storage off */ }
 }
 
 export function expiresSoon(session, now = Date.now(), skewMs = 60_000) {

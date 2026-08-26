@@ -115,3 +115,22 @@ test('currentUserId reads through to the stored session', () => {
   assert.equal(currentUserId(store), 'u9');
   assert.equal(currentUserId(fakeStore()), null);
 });
+
+test('clearSession does not throw when localStorage is unavailable', () => {
+  /* Safari Lockdown Mode, storage fully disabled, or embedded contexts can
+     throw a SecurityError when accessing globalThis.localStorage. clearSession
+     must never propagate it. */
+  const savedStorage = globalThis.localStorage;
+  try {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() { throw new Error('storage off'); },
+    });
+    assert.doesNotThrow(() => clearSession());
+  } finally {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: savedStorage,
+    });
+  }
+});
