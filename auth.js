@@ -179,3 +179,71 @@ export async function completeSignIn({
   saveSession(session, store);
   return session;
 }
+
+/* Single-flight guard. The minute timer, a visibilitychange and a queued
+   flush can all want a token in the same instant; two refreshes would race,
+   and Supabase rotates the refresh token, so the loser's is already dead. */
+let refreshing = null;
+
+export function resetRefreshState() { refreshing = null; }
+
+async function refresh({ session, base, apikey, fetchImpl, store, now }) {
+  const res = await fetchImpl(`${base}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST',
+    headers: { apikey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: session.refresh_token }),
+  });
+  if (!res.ok) {
+    /* A refresh token the server rejects will be rejected again next minute.
+       Signing out is the only exit that does not loop. */
+    clearSession(store);
+    return null;
+  }
+  const next = sessionFromTokenResponse(await res.json(), now);
+  if (!next) { clearSession(store); return null; }
+  /* Supabase omits `user` on a refresh response — carry the identity we
+     already hold rather than losing the uid every hour. */
+  if (!next.user_id) { next.user_id = session.user_id; next.email = session.email; }
+  if (!next.refresh_token) next.refresh_token = session.refresh_token;
+  saveSession(next, store);
+  return next.access_token;
+}
+
+export function accessToken({
+  force = false,
+  base = AUTH_BASE,
+  apikey = SUPABASE_ANON_KEY,
+  fetchImpl = globalThis.fetch,
+  store,
+  now = Date.now(),
+} = {}) {
+  const session = loadSession(store);
+  if (!session) return Promise.resolve(null);
+  if (!force && !expiresSoon(session, now)) return Promise.resolve(session.access_token);
+  if (!session.refresh_token) { clearSession(store); return Promise.resolve(null); }
+  if (!refreshing) {
+    refreshing = refresh({ session, base, apikey, fetchImpl, store, now })
+      .catch(() => null)
+      .finally(() => { refreshing = null; });
+  }
+  return refreshing;
+}
+
+export async function signOut({
+  base = AUTH_BASE, apikey = SUPABASE_ANON_KEY,
+  fetchImpl = globalThis.fetch, store,
+} = {}) {
+  const session = loadSession(store);
+  if (session?.access_token) {
+    try {
+      await fetchImpl(`${base}/auth/v1/logout`, {
+        method: 'POST',
+        headers: { apikey, Authorization: `Bearer ${session.access_token}` },
+      });
+    } catch {
+      /* Offline. Signing out on this device must still work. */
+    }
+  }
+  resetRefreshState();
+  clearSession(store);
+}

@@ -227,3 +227,112 @@ test('completeSignIn surfaces a rejected exchange instead of storing nothing qui
   );
   assert.equal(loadSession(store), null);
 });
+
+import { accessToken, signOut, resetRefreshState } from '../auth.js';
+
+const okToken = (body) => async () => ({ ok: true, json: async () => body });
+
+test('accessToken returns null when nobody is signed in', async () => {
+  resetRefreshState();
+  assert.equal(await accessToken({ store: fakeStore() }), null);
+});
+
+test('accessToken returns the stored token untouched when it is fresh', async () => {
+  resetRefreshState();
+  const store = fakeStore();
+  saveSession({ access_token: 'FRESH', refresh_token: 'R', expires_at: 500_000, user_id: 'u' }, store);
+  let called = false;
+  const t = await accessToken({ store, now: 0, fetchImpl: async () => { called = true; } });
+  assert.equal(t, 'FRESH');
+  assert.equal(called, false, 'refreshed a token that had not expired');
+});
+
+test('accessToken refreshes inside the skew window and stores the new session', async () => {
+  resetRefreshState();
+  const store = fakeStore();
+  saveSession({ access_token: 'OLD', refresh_token: 'RT', expires_at: 50_000, user_id: 'u' }, store);
+  let seen;
+  const fetchImpl = async (url, opts) => {
+    seen = { url, opts };
+    return { ok: true, json: async () => ({ access_token: 'NEW', refresh_token: 'RT2', expires_in: 3600, user: { id: 'u' } }) };
+  };
+  const t = await accessToken({ store, now: 0, base: 'https://p', apikey: 'A', fetchImpl });
+  assert.equal(t, 'NEW');
+  assert.match(seen.url, /grant_type=refresh_token$/);
+  assert.deepEqual(JSON.parse(seen.opts.body), { refresh_token: 'RT' });
+  assert.equal(loadSession(store).access_token, 'NEW');
+});
+
+test('force refreshes even a token that looks fresh', async () => {
+  /* This is the path a 401 from PostgREST takes: the token looks valid to us
+     and the server disagrees, so our opinion has to be overridable. */
+  resetRefreshState();
+  const store = fakeStore();
+  saveSession({ access_token: 'OLD', refresh_token: 'RT', expires_at: 999_999_999, user_id: 'u' }, store);
+  const t = await accessToken({
+    store, now: 0, base: 'https://p', apikey: 'A', force: true,
+    fetchImpl: okToken({ access_token: 'NEW', expires_in: 60, user: { id: 'u' } }),
+  });
+  assert.equal(t, 'NEW');
+});
+
+test('two concurrent refreshes make one network call', async () => {
+  /* A tick, a visibilitychange and the minute timer can all want a token in
+     the same instant. Two refreshes would race, and the loser's refresh
+     token is already rotated and therefore dead. */
+  resetRefreshState();
+  const store = fakeStore();
+  saveSession({ access_token: 'OLD', refresh_token: 'RT', expires_at: 0, user_id: 'u' }, store);
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls++;
+    await new Promise((r) => setTimeout(r, 10));
+    return { ok: true, json: async () => ({ access_token: 'NEW', expires_in: 3600, user: { id: 'u' } }) };
+  };
+  const [a, b] = await Promise.all([
+    accessToken({ store, now: 1000, base: 'https://p', apikey: 'A', fetchImpl }),
+    accessToken({ store, now: 1000, base: 'https://p', apikey: 'A', fetchImpl }),
+  ]);
+  assert.equal(calls, 1);
+  assert.equal(a, 'NEW');
+  assert.equal(b, 'NEW');
+});
+
+test('a rejected refresh signs the user out rather than looping', async () => {
+  resetRefreshState();
+  const store = fakeStore();
+  saveSession({ access_token: 'OLD', refresh_token: 'RT', expires_at: 0, user_id: 'u' }, store);
+  const t = await accessToken({
+    store, now: 1000, base: 'https://p', apikey: 'A',
+    fetchImpl: async () => ({ ok: false, status: 400, text: async () => 'invalid' }),
+  });
+  assert.equal(t, null);
+  assert.equal(loadSession(store), null);
+});
+
+test('a session with no refresh token signs out instead of calling the endpoint', async () => {
+  resetRefreshState();
+  const store = fakeStore();
+  saveSession({ access_token: 'OLD', refresh_token: '', expires_at: 0, user_id: 'u' }, store);
+  let called = false;
+  assert.equal(await accessToken({ store, now: 1000, fetchImpl: async () => { called = true; } }), null);
+  assert.equal(called, false);
+  assert.equal(loadSession(store), null);
+});
+
+test('signOut clears locally even when the server call fails', async () => {
+  /* Offline sign-out must still sign you out on this device. */
+  const store = fakeStore();
+  saveSession({ access_token: 'AT', expires_at: 1, user_id: 'u' }, store);
+  await signOut({ store, base: 'https://p', apikey: 'A', fetchImpl: async () => { throw new Error('offline'); } });
+  assert.equal(loadSession(store), null);
+});
+
+test('signOut revokes server-side when it can', async () => {
+  const store = fakeStore();
+  saveSession({ access_token: 'AT', expires_at: 1, user_id: 'u' }, store);
+  let seen;
+  await signOut({ store, base: 'https://p', apikey: 'A', fetchImpl: async (url, opts) => { seen = { url, opts }; return { ok: true }; } });
+  assert.match(seen.url, /\/auth\/v1\/logout$/);
+  assert.equal(seen.opts.headers.Authorization, 'Bearer AT');
+});
