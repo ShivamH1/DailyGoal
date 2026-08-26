@@ -34,3 +34,84 @@ test('makeChallenge matches the RFC 7636 appendix B vector', async () => {
   const challenge = await makeChallenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk');
   assert.equal(challenge, 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
 });
+
+import {
+  sessionFromTokenResponse, saveSession, loadSession, clearSession,
+  expiresSoon, currentUserId, saveVerifier, readVerifier,
+} from '../auth.js';
+
+const fakeStore = (seed = {}) => {
+  const m = new Map(Object.entries(seed));
+  return {
+    getItem: (k) => (m.has(k) ? m.get(k) : null),
+    setItem: (k, v) => m.set(k, String(v)),
+    removeItem: (k) => m.delete(k),
+    _dump: () => Object.fromEntries(m),
+  };
+};
+
+test('sessionFromTokenResponse dates expiry from our clock, not the server field', () => {
+  /* A device with a skewed clock would compute an expires_at it then
+     disagrees with. expires_in is a duration and survives skew; the
+     server's own expires_at does not. */
+  const s = sessionFromTokenResponse(
+    { access_token: 'a', refresh_token: 'r', expires_in: 3600,
+      expires_at: 9999999999, user: { id: 'u1', email: 'x@y.z' } },
+    1_000_000
+  );
+  assert.equal(s.expires_at, 1_000_000 + 3_600_000);
+  assert.equal(s.user_id, 'u1');
+  assert.equal(s.email, 'x@y.z');
+});
+
+test('sessionFromTokenResponse falls back to an hour when expires_in is absent', () => {
+  const s = sessionFromTokenResponse({ access_token: 'a' }, 0);
+  assert.equal(s.expires_at, 3_600_000);
+});
+
+test('sessionFromTokenResponse returns null for a response with no token', () => {
+  assert.equal(sessionFromTokenResponse({ error: 'nope' }, 0), null);
+  assert.equal(sessionFromTokenResponse(null, 0), null);
+});
+
+test('a session round-trips through the store', () => {
+  const store = fakeStore();
+  const s = sessionFromTokenResponse({ access_token: 'a', expires_in: 60, user: { id: 'u1' } }, 0);
+  assert.equal(saveSession(s, store), true);
+  assert.deepEqual(loadSession(store), s);
+});
+
+test('loadSession returns null rather than throwing on a corrupt payload', () => {
+  assert.equal(loadSession(fakeStore({ 'wi:session': '{not json' })), null);
+});
+
+test('loadSession rejects a stored value that is not a session', () => {
+  assert.equal(loadSession(fakeStore({ 'wi:session': '{"nope":1}' })), null);
+});
+
+test('clearSession removes the session and any half-finished sign-in', () => {
+  const store = fakeStore();
+  saveSession({ access_token: 'a', expires_at: 1, user_id: 'u' }, store);
+  saveVerifier('v', store);
+  clearSession(store);
+  assert.equal(loadSession(store), null);
+  assert.equal(readVerifier(store), null);
+});
+
+test('expiresSoon is true inside the skew window and false outside it', () => {
+  const s = { access_token: 'a', expires_at: 100_000, user_id: 'u' };
+  assert.equal(expiresSoon(s, 30_000), false);        // 70s left
+  assert.equal(expiresSoon(s, 50_000), true);         // 50s left, inside 60s skew
+  assert.equal(expiresSoon(s, 200_000), true);        // already expired
+});
+
+test('expiresSoon treats a missing session as needing a token', () => {
+  assert.equal(expiresSoon(null, 0), true);
+});
+
+test('currentUserId reads through to the stored session', () => {
+  const store = fakeStore();
+  saveSession({ access_token: 'a', expires_at: 1, user_id: 'u9' }, store);
+  assert.equal(currentUserId(store), 'u9');
+  assert.equal(currentUserId(fakeStore()), null);
+});

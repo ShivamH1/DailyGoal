@@ -28,3 +28,75 @@ export async function makeChallenge(verifier, subtle = globalThis.crypto.subtle)
   const digest = await subtle.digest('SHA-256', new TextEncoder().encode(verifier));
   return base64url(new Uint8Array(digest));
 }
+
+const SESSION_KEY = 'wi:session';
+const VERIFIER_KEY = 'wi:pkce-verifier';
+
+/* The session is NOT namespaced by user: it is the thing that decides which
+   user we are. Everything else keys off it. */
+const defaultStore = () => globalThis.localStorage;
+
+function readJSON(key, store) {
+  try {
+    const raw = (store || defaultStore()).getItem(key);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeJSON(key, value, store) {
+  try {
+    (store || defaultStore()).setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const HOUR_MS = 3_600_000;
+
+export function sessionFromTokenResponse(json, now = Date.now()) {
+  if (!json || !json.access_token) return null;
+  /* expires_in is a duration, so it survives a skewed device clock; the
+     server's own expires_at does not, and this app runs on phones. */
+  const ttl = Number(json.expires_in) > 0 ? Number(json.expires_in) * 1000 : HOUR_MS;
+  return {
+    access_token: json.access_token,
+    refresh_token: json.refresh_token || '',
+    expires_at: now + ttl,
+    user_id: json.user?.id || '',
+    email: json.user?.email || '',
+  };
+}
+
+export const saveSession = (session, store) => writeJSON(SESSION_KEY, session, store);
+
+export function loadSession(store) {
+  const s = readJSON(SESSION_KEY, store);
+  /* A stored object that is not a session is corruption, not a session with
+     missing fields — treat it as signed out rather than half-authenticating. */
+  return s && typeof s.access_token === 'string' && s.access_token ? s : null;
+}
+
+export function clearSession(store) {
+  const s = store || defaultStore();
+  try { s.removeItem(SESSION_KEY); s.removeItem(VERIFIER_KEY); } catch { /* storage off */ }
+}
+
+export function expiresSoon(session, now = Date.now(), skewMs = 60_000) {
+  if (!session || typeof session.expires_at !== 'number') return true;
+  return session.expires_at - now <= skewMs;
+}
+
+export const currentUserId = (store) => loadSession(store)?.user_id || null;
+
+export function saveVerifier(verifier, store) {
+  try { (store || defaultStore()).setItem(VERIFIER_KEY, verifier); return true; } catch { return false; }
+}
+
+export function readVerifier(store) {
+  try { return (store || defaultStore()).getItem(VERIFIER_KEY); } catch { return null; }
+}
