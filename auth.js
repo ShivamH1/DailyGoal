@@ -103,3 +103,79 @@ export function saveVerifier(verifier, store) {
 export function readVerifier(store) {
   try { return (store || defaultStore()).getItem(VERIFIER_KEY); } catch { return null; }
 }
+
+/* Same normalisation as sync.js: the dashboard hands out the project URL with
+   /rest/v1/ already appended, and these routes append their own path. */
+const normalizeBase = (url) =>
+  String(url || '').replace(/\/+$/, '').replace(/(\/rest(\/v1)?)+$/, '');
+
+export const AUTH_BASE = normalizeBase(SUPABASE_URL);
+
+export const isAuthConfigured = () =>
+  Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && !SUPABASE_URL.includes('<'));
+
+export function authorizeUrl(base, { redirectTo, challenge, provider = 'google' }) {
+  const q = new URLSearchParams({
+    provider,
+    redirect_to: redirectTo,
+    code_challenge: challenge,
+    code_challenge_method: 's256',
+  });
+  return `${base}/auth/v1/authorize?${q}`;
+}
+
+/* A spent authorisation code left in the address bar is replayed on every
+   reload and rejected every time. Strip it — and the error fields, which
+   would otherwise persist an error state the user has already seen. */
+export function stripAuthParams(href) {
+  const u = new URL(href);
+  for (const k of ['code', 'state', 'error', 'error_code', 'error_description']) {
+    u.searchParams.delete(k);
+  }
+  u.hash = '';
+  return u.toString().replace(/\?$/, '');
+}
+
+export async function beginSignIn({
+  base = AUTH_BASE,
+  redirectTo = globalThis.location?.origin + globalThis.location?.pathname,
+  store,
+  navigate = (u) => { globalThis.location.assign(u); },
+} = {}) {
+  const verifier = makeVerifier();
+  const challenge = await makeChallenge(verifier);
+  /* Stored before navigating, never after: the redirect can happen at any
+     point once assign() is called. */
+  saveVerifier(verifier, store);
+  const url = authorizeUrl(base, { redirectTo, challenge });
+  navigate(url);
+  return url;
+}
+
+export async function completeSignIn({
+  href = globalThis.location?.href,
+  base = AUTH_BASE,
+  apikey = SUPABASE_ANON_KEY,
+  fetchImpl = globalThis.fetch,
+  store,
+  now = Date.now(),
+} = {}) {
+  const code = new URL(href).searchParams.get('code');
+  if (!code) return null;
+
+  const verifier = readVerifier(store);
+  if (!verifier) throw new Error('sign-in state missing — start sign-in again');
+
+  const res = await fetchImpl(`${base}/auth/v1/token?grant_type=pkce`, {
+    method: 'POST',
+    headers: { apikey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ auth_code: code, code_verifier: verifier }),
+  });
+  if (!res.ok) throw new Error(`sign-in failed: ${res.status} ${await res.text?.() ?? ''}`);
+
+  const session = sessionFromTokenResponse(await res.json(), now);
+  if (!session) throw new Error('sign-in failed: no token in response');
+  clearSession(store);          /* drops the spent verifier */
+  saveSession(session, store);
+  return session;
+}

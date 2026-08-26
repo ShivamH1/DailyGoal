@@ -134,3 +134,96 @@ test('clearSession does not throw when localStorage is unavailable', () => {
     });
   }
 });
+
+import { authorizeUrl, stripAuthParams, beginSignIn, completeSignIn } from '../auth.js';
+
+test('authorizeUrl targets the social-login route with an s256 challenge', () => {
+  const u = new URL(authorizeUrl('https://p.supabase.co', {
+    redirectTo: 'http://localhost:8080/', challenge: 'CHAL',
+  }));
+  assert.equal(u.pathname, '/auth/v1/authorize');
+  assert.equal(u.searchParams.get('provider'), 'google');
+  assert.equal(u.searchParams.get('redirect_to'), 'http://localhost:8080/');
+  assert.equal(u.searchParams.get('code_challenge'), 'CHAL');
+  assert.equal(u.searchParams.get('code_challenge_method'), 's256');
+});
+
+test('stripAuthParams removes the spent code and the error fields', () => {
+  const clean = stripAuthParams('http://localhost:8080/?code=abc&error=x&error_description=y&keep=1#frag');
+  assert.equal(clean, 'http://localhost:8080/?keep=1');
+});
+
+test('stripAuthParams leaves no dangling question mark', () => {
+  assert.equal(stripAuthParams('http://localhost:8080/?code=abc'), 'http://localhost:8080/');
+});
+
+test('beginSignIn stores the verifier before navigating', async () => {
+  const store = fakeStore();
+  let went = '';
+  const url = await beginSignIn({
+    base: 'https://p.supabase.co', redirectTo: 'http://localhost:8080/',
+    store, navigate: (u) => { went = u; },
+  });
+  const verifier = readVerifier(store);
+  assert.ok(verifier && verifier.length >= 43, 'verifier was not stored');
+  assert.equal(went, url);
+  /* The challenge on the wire must be the S256 of the verifier we kept, or
+     the exchange in completeSignIn fails with no useful message. */
+  assert.equal(
+    new URL(url).searchParams.get('code_challenge'),
+    await makeChallenge(verifier)
+  );
+});
+
+test('completeSignIn does nothing when there is no code in the URL', async () => {
+  const s = await completeSignIn({ href: 'http://localhost:8080/', store: fakeStore() });
+  assert.equal(s, null);
+});
+
+test('completeSignIn exchanges the code with grant_type=pkce', async () => {
+  const store = fakeStore();
+  saveVerifier('VERIFIER', store);
+  let seen;
+  const fetchImpl = async (url, opts) => {
+    seen = { url, opts };
+    return { ok: true, json: async () => ({ access_token: 'AT', refresh_token: 'RT', expires_in: 3600, user: { id: 'u1' } }) };
+  };
+  const s = await completeSignIn({
+    href: 'http://localhost:8080/?code=CODE', base: 'https://p.supabase.co',
+    apikey: 'ANON', fetchImpl, store, now: 0,
+  });
+  assert.match(seen.url, /\/auth\/v1\/token\?grant_type=pkce$/);
+  assert.deepEqual(JSON.parse(seen.opts.body), { auth_code: 'CODE', code_verifier: 'VERIFIER' });
+  assert.equal(seen.opts.headers.apikey, 'ANON');
+  assert.equal(s.access_token, 'AT');
+  assert.deepEqual(loadSession(store), s);
+});
+
+test('completeSignIn discards the verifier once it has been spent', async () => {
+  const store = fakeStore();
+  saveVerifier('VERIFIER', store);
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ access_token: 'AT', expires_in: 60, user: { id: 'u' } }) });
+  await completeSignIn({ href: 'http://x/?code=C', base: 'https://p', apikey: 'A', fetchImpl, store, now: 0 });
+  assert.equal(readVerifier(store), null);
+});
+
+test('completeSignIn throws when the verifier is missing', async () => {
+  /* Landing on ?code= with no stored verifier means the sign-in began in a
+     different browser or storage was cleared mid-flow. Silently returning
+     null would leave the user staring at a sign-in button that just failed. */
+  await assert.rejects(
+    () => completeSignIn({ href: 'http://x/?code=C', store: fakeStore(), fetchImpl: async () => ({ ok: true, json: async () => ({}) }) }),
+    /sign-in state/
+  );
+});
+
+test('completeSignIn surfaces a rejected exchange instead of storing nothing quietly', async () => {
+  const store = fakeStore();
+  saveVerifier('V', store);
+  const fetchImpl = async () => ({ ok: false, status: 404, text: async () => 'flow_state_not_found' });
+  await assert.rejects(
+    () => completeSignIn({ href: 'http://x/?code=C', base: 'https://p', apikey: 'A', fetchImpl, store }),
+    /404/
+  );
+  assert.equal(loadSession(store), null);
+});
