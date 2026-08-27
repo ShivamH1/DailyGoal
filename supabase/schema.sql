@@ -34,6 +34,7 @@ grant select, insert, update, delete on daily_progress to anon;
 alter table daily_progress add column if not exists extras jsonb;
 alter table daily_progress alter column user_id set default auth.uid();
 
+drop policy if exists own_rows on daily_progress;
 create policy own_rows on daily_progress
   for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
@@ -59,10 +60,12 @@ create table if not exists user_schedule (
 alter table user_profile  enable row level security;
 alter table user_schedule enable row level security;
 
+drop policy if exists own_profile on user_profile;
 create policy own_profile on user_profile
   for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+drop policy if exists own_schedule on user_schedule;
 create policy own_schedule on user_schedule
   for all to authenticated
   using (user_id = auth.uid()) with check (user_id = auth.uid());
