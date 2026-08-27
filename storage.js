@@ -17,7 +17,14 @@ export function getNamespace() { return namespace; }
 /* No namespace means no account is known yet, and the only safe answer is the
    pre-migration key — never a half-formed 'wi::progress' that two different
    signed-out states would share. */
-export const keyFor = (name, ns = namespace) => (ns ? `wi:${ns}:${name}` : LEGACY[name]);
+export const keyFor = (name, ns = namespace) => {
+  if (ns) return `wi:${ns}:${name}`;
+  /* Only the two pre-account keys have a meaning without a namespace.
+     Anything else is a programming error — a document read before sign-in —
+     and must be loud, not silently shared. */
+  if (LEGACY[name]) return LEGACY[name];
+  throw new Error(`no namespace set for "${name}"`);
+};
 
 const defaultStore = () => globalThis.localStorage;
 
@@ -59,6 +66,28 @@ export function markPending(dates, store) {
 export function clearPending(dates, store) {
   const gone = new Set(dates);
   write(keyFor('pending'), loadPending(store).filter((d) => !gone.has(d)), store);
+}
+
+/* Whole documents (profile, schedule) rather than per-date records. Same
+   namespacing and the same pending-queue discipline as progress, just keyed
+   by document kind instead of date. */
+const DOC_PENDING_KEY = 'doc-pending';
+
+export const loadDoc = (kind, store) => read(keyFor(kind), null, store);
+export const saveDoc = (kind, doc, store) => write(keyFor(kind), doc, store);
+
+export function loadDocPending(store) {
+  const v = read(keyFor(DOC_PENDING_KEY), [], store);
+  return Array.isArray(v) ? v : [];
+}
+
+export function markDocPending(kind, store) {
+  write(keyFor(DOC_PENDING_KEY), [...new Set([...loadDocPending(store), kind])], store);
+}
+
+export function clearDocPending(kinds, store) {
+  const gone = new Set(kinds);
+  write(keyFor(DOC_PENDING_KEY), loadDocPending(store).filter((k) => !gone.has(k)), store);
 }
 
 /* One-off, on first sign-in: adopt the data written before accounts existed.

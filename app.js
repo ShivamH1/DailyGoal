@@ -1,9 +1,11 @@
 import {
   loadProgress, saveProgress, loadPending, markPending, clearPending,
   setNamespace, migrateLegacy,
+  loadDoc, saveDoc, markDocPending, loadDocPending, clearDocPending,
 } from './storage.js';
 import { clearableDates, computeStreak, growthVals, mergeProgress, toCSV, weeklySummary, weekStart } from './progress.js';
-import { pull, push, isConfigured, isAuthError } from './sync.js';
+import { pull, push, isConfigured, isAuthError, pullDoc, pushDoc } from './sync.js';
+import { defaultProfile, normalizeProfile, mergeDoc } from './profile.js';
 import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
 import {
@@ -103,6 +105,14 @@ tabs.forEach(t=>t.addEventListener('click',()=>showDay(t.dataset.d)));
    there is a session. */
 let progress = {};
 
+/* The per-account profile document. `profile` is always a normalized, usable
+   shape (defaultProfile() until a real one loads); `profileDoc` is the raw
+   { value, u } envelope or null, and that null is load-bearing — it is how
+   the onboarding wizard will tell "never set up" from "set up, empty" apart,
+   so nothing here may collapse it into an empty document. */
+let profile = defaultProfile();
+let profileDoc = null;
+
 const saveStatus = document.getElementById('saveStatus');
 /* Save and sync now share one line under the note. They keep one span each —
    this writer owns #saveStatus, describeIdle owns #syncStatus — and the
@@ -133,6 +143,25 @@ function commit(dates) {
   }
   queueSync(dates);
   renderWeek();
+}
+
+/* No profile-specific UI exists yet — Task 13 rewires the day/exam views to
+   read profile.deadlines and grows this function accordingly. Until then
+   this exists only so the pull and commit paths below have a stable
+   re-render hook to call. */
+function renderProfile() {}
+
+/* Same shape as commit(): stamp, write locally, queue, re-render. The stamp
+   is what the flush compares against to decide whether an edit landed while
+   its own push was in flight. pushDoc throws on a null/undefined/empty
+   updatedAt, so this always supplies a real ISO timestamp rather than
+   leaving it to whatever profileDoc.u happened to hold before. */
+function commitProfile() {
+  profileDoc = { value: profile, u: new Date().toISOString() };
+  if (!saveDoc('profile', profileDoc)) setSaveStatus('⚠ not saved', 'var(--warn)');
+  markDocPending('profile');
+  armFlush();
+  renderProfile();
 }
 
 /* ---------- remote sync ---------- */
@@ -208,7 +237,12 @@ async function flushSync() {
      second caller re-arms the debounce instead of starting its own push. */
   if (flushing) return armFlush();
   const dates = loadPending();
-  if (!dates.length) return describeIdle();
+  const kinds = loadDocPending();
+  /* A profile-only edit (no ticks touched) must still flush. The plan's
+     original guard here was `if (!dates.length) return describeIdle();`,
+     which would strand a queued document forever whenever the progress queue
+     was empty — the common case for an onboarding-only session. */
+  if (!dates.length && !kinds.length) return describeIdle();
   flushing = true;
   setSyncStatus('syncing…');
   try {
@@ -216,13 +250,31 @@ async function flushSync() {
        the network sees. A date whose 'u' has moved on by the time we get back
        was ticked mid-flight and must stay queued. */
     const sent = dates.map((d) => (progress[d] || {}).u);
-    await push(progress, dates);
-    clearPending(clearableDates(dates, sent, progress));
+    if (dates.length) {
+      await push(progress, dates);
+      clearPending(clearableDates(dates, sent, progress));
+    }
+    if (kinds.length) {
+      /* Exactly the trap clearableDates exists for, one document at a time:
+         the body is serialised before the await, so an edit made mid-flight
+         must not be cleared by the push that never carried it.
+         scheduleDoc does not exist until Task 18 — docFor returns null for
+         any kind it does not yet know how to find, and that kind is skipped
+         rather than pushed or wrongly cleared. */
+      const docFor = (k) => (k === 'profile' ? profileDoc : null);
+      const sentDocs = kinds.map((k) => docFor(k)?.u);
+      for (const [i, k] of kinds.entries()) {
+        const doc = docFor(k);
+        if (!doc) continue;
+        await pushDoc(k, doc.value, doc.u);
+        if (docFor(k)?.u === sentDocs[i]) clearDocPending([k]);
+      }
+    }
     lastSyncAt = Date.now();
     attempt = 0;
     offline = false;
     signedOut = false;
-    if (loadPending().length) armFlush();
+    if (loadPending().length || loadDocPending().length) armFlush();
     describeIdle();
   } catch (err) {
     /* authedFetch throws this exact, stable error when there is no session to
@@ -538,6 +590,17 @@ async function initSync() {
     renderScorecard();
     renderCalendar();
     renderWeek();
+    /* Everything pullDoc returns is untrusted — an older app version, a
+       hand-edited row, or (per the plan for a later project) a language
+       model. mergeDoc only picks the newer envelope by timestamp; it does
+       not vouch for what is inside it. normalizeProfile is what actually
+       defends `profile` from a malformed or hostile value, so nothing
+       downstream ever renders the raw remote payload. */
+    const remoteProfile = await pullDoc('profile');
+    profileDoc = mergeDoc(profileDoc, remoteProfile);
+    profile = normalizeProfile(profileDoc?.value);
+    saveDoc('profile', profileDoc);
+    renderProfile();
     lastSyncAt = Date.now();
     offline = false;
   } catch (err) {
@@ -579,6 +642,8 @@ function startApp() {
   const uid = currentUserId();
   migrateLegacy(uid);
   setNamespace(uid);
+  profileDoc = loadDoc('profile');
+  profile = normalizeProfile(profileDoc?.value);
   DAY_KEYS.forEach(renderDay);
   renderNow();
   showDay(istNow().dayKey);
@@ -587,12 +652,13 @@ function startApp() {
   renderCalendar();
   renderWeek();
   renderExam();
+  renderProfile();
   initSync();
   setInterval(tick, 60000);
   window.addEventListener('online', flushSync);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') tick();
-    else if (loadPending().length) flushSync();
+    else if (loadPending().length || loadDocPending().length) flushSync();
   });
 }
 

@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   loadProgress, saveProgress, loadPending, markPending, clearPending,
-  setNamespace, getNamespace, keyFor, migrateLegacy
+  setNamespace, getNamespace, keyFor, migrateLegacy,
+  loadDoc, saveDoc, markDocPending, loadDocPending, clearDocPending,
 } from '../storage.js';
 
 /* Minimal stand-in for the Web Storage API — only the four members
@@ -217,5 +218,40 @@ test('a half-written migration can still be retried on the next sign-in', () => 
   setNamespace('u1');
   assert.deepEqual(loadProgress(store), legacy);
   assert.deepEqual(loadPending(store), ['2026-08-20']);
+  setNamespace(null);
+});
+
+test('keyFor refuses to invent a key for a document with no account', () => {
+  /* Documents only exist for a signed-in user. Falling back to a shared
+     'wi::profile' would give every signed-out state one bucket, which is the
+     bug namespacing exists to remove, not a smaller version of it. */
+  setNamespace(null);
+  assert.throws(() => keyFor('profile'), /namespace/);
+});
+
+test('documents round-trip inside the account namespace', () => {
+  const store = fakeStore();
+  setNamespace('u1');
+  assert.equal(saveDoc('profile', { value: { season: 'S' }, u: 'T' }, store), true);
+  assert.deepEqual(loadDoc('profile', store), { value: { season: 'S' }, u: 'T' });
+  assert.equal(store._dump()['wi:u1:profile'] !== undefined, true);
+  setNamespace(null);
+});
+
+test('loadDoc returns null for an account that has never saved one', () => {
+  setNamespace('u1');
+  assert.equal(loadDoc('schedule', fakeStore()), null);
+  setNamespace(null);
+});
+
+test('the document queue behaves like the date queue', () => {
+  const store = fakeStore();
+  setNamespace('u1');
+  markDocPending('profile', store);
+  markDocPending('profile', store);
+  markDocPending('schedule', store);
+  assert.deepEqual(loadDocPending(store).sort(), ['profile', 'schedule']);
+  clearDocPending(['profile'], store);
+  assert.deepEqual(loadDocPending(store), ['schedule']);
   setNamespace(null);
 });
