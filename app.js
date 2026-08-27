@@ -186,7 +186,12 @@ function setSyncStatus(text, color) {
 }
 
 function describeIdle() {
-  const pending = loadPending();
+  /* Both queues, not just the dates one. A profile-only edit — an onboarding
+     session touches no ticks at all — leaves loadPending() empty while a
+     document is genuinely queued, and reporting "synced" there is simply
+     untrue. Same class of lie as the "offline" that turned out to mean
+     "signed out". */
+  const pending = [...loadPending(), ...loadDocPending()];
   if (!isConfigured()) return setSyncStatus('local only · sync not configured');
   /* Checked before `offline`: both can theoretically be true (a dead session
      discovered, then a later network attempt also fails) and "offline" would
@@ -262,12 +267,19 @@ async function flushSync() {
          any kind it does not yet know how to find, and that kind is skipped
          rather than pushed or wrongly cleared. */
       const docFor = (k) => (k === 'profile' ? profileDoc : null);
-      const sentDocs = kinds.map((k) => docFor(k)?.u);
-      for (const [i, k] of kinds.entries()) {
+      for (const k of kinds) {
         const doc = docFor(k);
         if (!doc) continue;
-        await pushDoc(k, doc.value, doc.u);
-        if (docFor(k)?.u === sentDocs[i]) clearDocPending([k]);
+        /* Snapshot immediately before THIS kind's own await, not once before
+           the loop. A pre-loop snapshot is right only for the first kind: by
+           the time a later one is reached, earlier pushes have already
+           awaited, so its baseline would predate an edit that its own push
+           then correctly carried — and the push would fail to clear. There is
+           only one kind today, so this is dormant until Task 18 adds the
+           schedule; the shape is the same trap clearableDates exists for. */
+        const sentU = doc.u;
+        await pushDoc(k, doc.value, sentU);
+        if (docFor(k)?.u === sentU) clearDocPending([k]);
       }
     }
     lastSyncAt = Date.now();
@@ -597,9 +609,24 @@ async function initSync() {
        defends `profile` from a malformed or hostile value, so nothing
        downstream ever renders the raw remote payload. */
     const remoteProfile = await pullDoc('profile');
-    profileDoc = mergeDoc(profileDoc, remoteProfile);
-    profile = normalizeProfile(profileDoc?.value);
+    const winner = mergeDoc(profileDoc, remoteProfile);
+    const remoteWon = !!winner && winner === remoteProfile;
+    /* Normalise BEFORE the envelope is rebuilt, not after. mergeDoc only picks
+       the newer envelope by timestamp; it does not vouch for what is inside
+       one. Assigning its pick straight to profileDoc would persist the raw
+       remote value to localStorage AND make it the body of the next push —
+       so an older app version, a hand-edited row, or a language model in the
+       later project could write malformed content back to the server through
+       a client that never inspected it. Only `profile` was being normalised,
+       which protects what is rendered and nothing else. */
+    profile = normalizeProfile(winner?.value);
+    profileDoc = winner ? { value: profile, u: winner.u } : null;
     saveDoc('profile', profileDoc);
+    /* A queued local edit that just lost the merge has nothing left to send.
+       Left queued, the next flush would push the REMOTE value straight back,
+       bump updated_at for no reason, and clear the queue — which reads
+       exactly like the local edit synced when it was actually superseded. */
+    if (remoteWon) clearDocPending(['profile']);
     renderProfile();
     lastSyncAt = Date.now();
     offline = false;

@@ -109,3 +109,17 @@ test('mergeDoc handles either side being absent', () => {
   assert.equal(mergeDoc(null, a), a);
   assert.equal(mergeDoc(null, null), null);
 });
+
+test('mergeDoc returns the winning side itself, not a copy of it', () => {
+  /* app.js decides whether the REMOTE side won by identity — `winner ===
+     remoteProfile` — and uses that to drop a queued local edit that has just
+     been superseded. Returning a structurally-equal copy here would leave
+     that check silently false forever, so the queued edit would be pushed
+     back over the winner. Pinning the property the caller relies on. */
+  const local = { value: { season: 'L' }, u: '2026-08-20T00:00:00.000Z' };
+  const remote = { value: { season: 'R' }, u: '2026-08-21T00:00:00.000Z' };
+  assert.equal(mergeDoc(local, remote), remote);
+  assert.equal(mergeDoc(remote, local), remote);
+  assert.equal(mergeDoc(null, remote), remote);
+  assert.equal(mergeDoc(local, null), local);
+});
