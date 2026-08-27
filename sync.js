@@ -1,7 +1,8 @@
 /* The Supabase tier, spoken to directly over PostgREST. No SDK: one table,
    two verbs, and a bundle we would otherwise have to cache offline. */
 
-import { SUPABASE_URL, SUPABASE_ANON_KEY, USER_ID } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { accessToken } from './auth.js';
 
 const TABLE = 'daily_progress';
 
@@ -24,14 +25,28 @@ export const normalizeBase = (url) =>
 const BASE = normalizeBase(SUPABASE_URL);
 
 export const isConfigured = () =>
-  Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && USER_ID && !SUPABASE_URL.includes('<'));
+  Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && !SUPABASE_URL.includes('<'));
 
-const headers = (extra = {}) => ({
+const headers = (token, extra = {}) => ({
   apikey: SUPABASE_ANON_KEY,
-  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+  Authorization: `Bearer ${token}`,
   'Content-Type': 'application/json',
   ...extra,
 });
+
+/* PostgREST can reject a token this client still believes in — a clock skew,
+   or simply an app left open past the hour. One forced refresh and one retry;
+   a second 401 is a real failure and is thrown, because retrying it again
+   would be a loop rather than a recovery. */
+export async function authedFetch(url, opts = {}, { fetchImpl = globalThis.fetch, getToken = accessToken } = {}) {
+  let token = await getToken();
+  if (!token) throw new Error('not signed in');
+  let res = await fetchImpl(url, { ...opts, headers: headers(token, opts.headers), ...deadline() });
+  if (res.status !== 401) return res;
+  token = await getToken({ force: true });
+  if (!token) throw new Error('not signed in');
+  return fetchImpl(url, { ...opts, headers: headers(token, opts.headers), ...deadline() });
+}
 
 export function toRow(date, rec = {}) {
   return {
@@ -40,11 +55,13 @@ export function toRow(date, rec = {}) {
     workout: !!rec.w,
     sleep: !!rec.z,
     note: rec.note || '',
+    /* User-defined ticks. The definitions live in the profile; only the
+       values live here, so renaming a tick touches no logged row. */
+    extras: rec.x || {},
     /* Always explicit. Left to the column default, now() would stamp server
        receipt time, so a tick made offline on Monday and flushed on Wednesday
        would outrank a genuinely newer Tuesday edit from the other device. */
     updated_at: rec.u || new Date().toISOString(),
-    user_id: USER_ID,
   };
 }
 
@@ -66,27 +83,26 @@ export function fromRows(rows) {
       w: r.workout ? 1 : 0,
       z: r.sleep ? 1 : 0,
       note: r.note || '',
+      x: r.extras || {},
       u: canonicalTime(r.updated_at),
     };
   }
   return out;
 }
 
-export async function pull({ fetchImpl = globalThis.fetch } = {}) {
-  const url = `${BASE}/rest/v1/${TABLE}?select=*&user_id=eq.${USER_ID}`;
-  const res = await fetchImpl(url, { headers: headers(), ...deadline() });
+export async function pull(opts = {}) {
+  const res = await authedFetch(`${BASE}/rest/v1/${TABLE}?select=*`, {}, opts);
   if (!res.ok) throw new Error(`pull failed: ${res.status}`);
   return fromRows(await res.json());
 }
 
-export async function push(progress, dates, { fetchImpl = globalThis.fetch } = {}) {
+export async function push(progress, dates, opts = {}) {
   if (!dates.length) return;
   const body = JSON.stringify(dates.map((d) => toRow(d, progress[d])));
-  const res = await fetchImpl(`${BASE}/rest/v1/${TABLE}`, {
+  const res = await authedFetch(`${BASE}/rest/v1/${TABLE}`, {
     method: 'POST',
-    headers: headers({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
     body,
-    ...deadline(),
-  });
+  }, opts);
   if (!res.ok) throw new Error(`push failed: ${res.status} ${await res.text()}`);
 }
