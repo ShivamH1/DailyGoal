@@ -184,6 +184,23 @@ function describeIdle() {
   setSyncStatus('');
 }
 
+/* Both paths that talk to the server can discover a dead session, and this
+   is the same response either way. Factored out rather than duplicated
+   because the two paths disagree about which is the common case: a session
+   usually dies while the app is CLOSED, so the pull on next open finds out
+   first, and the flush branch below only runs at all when something is
+   queued. */
+function enterSignedOut() {
+  clearTimeout(syncTimer);
+  attempt = 0;
+  offline = false;
+  signedOut = true;
+  describeIdle();
+  authError.textContent =
+    'Your sign-in expired. Sign in again — nothing here was lost.';
+  showView('signed-out');
+}
+
 async function flushSync() {
   if (!isConfigured()) return describeIdle();
   /* 'online', visibilitychange and the debounce timer all call this with no
@@ -215,14 +232,7 @@ async function flushSync() {
        queue is left exactly as markPending wrote it for the next sign-in to
        pick up. clearPending is not called on this path. */
     if (isAuthError(err)) {
-      clearTimeout(syncTimer);
-      attempt = 0;
-      offline = false;
-      signedOut = true;
-      describeIdle();
-      authError.textContent =
-        'Your sign-in expired. Sign in again — nothing here was lost.';
-      showView('signed-out');
+      enterSignedOut();
     } else if (attempt < 4) {
       /* Back off 1s, 2s, 4s, 8s, then stop and wait for the next tick or an
          'online' event. An unbounded retry loop would burn battery all day. */
@@ -522,7 +532,12 @@ async function initSync() {
     renderWeek();
     lastSyncAt = Date.now();
     offline = false;
-  } catch {
+  } catch (err) {
+    /* A session that expired while the app was closed is discovered HERE, not
+       in the flush: flushSync returns early when the queue is empty, which it
+       usually is on a cold open. Reporting that as "offline" invites waiting
+       for a connection that was never the problem. */
+    if (isAuthError(err)) return enterSignedOut();
     /* Offline or unreachable — localStorage already rendered, so there is
        nothing for the user to lose. The status line has to say so all the
        same: blank reads as a healthy idle app. */
