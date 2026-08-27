@@ -76,9 +76,21 @@ export function migrateLegacy(uid, store) {
   if (!legacy || !Object.keys(legacy).length) return false;
   if (Object.keys(read(keyFor('progress', uid), {}, store)).length) return false;
 
-  write(keyFor('progress', uid), legacy, store);
+  /* Only delete the original once the copy is provably there. write() reports
+     failure through its return value rather than throwing, and quota-exceeded
+     is exactly the failure a migration invites, because for a moment the
+     progress object is stored twice. Deleting frees space rather than using
+     it, so the cleanup below would succeed even as the write failed and would
+     take the last copy with it. Returning false leaves everything where it
+     was, so the next sign-in can try again. */
   const pending = read(LEGACY.pending, [], store);
-  if (Array.isArray(pending) && pending.length) write(keyFor('pending', uid), pending, store);
+  if (Array.isArray(pending) && pending.length
+      && !write(keyFor('pending', uid), pending, store)) return false;
+  /* Progress is written LAST because the guard above tests the progress key.
+     Any partial failure therefore leaves that key empty, so the next sign-in
+     retries the whole migration instead of seeing a half-migrated account and
+     skipping it forever. */
+  if (!write(keyFor('progress', uid), legacy, store)) return false;
   try {
     const s = store || defaultStore();
     s.removeItem(LEGACY.progress);

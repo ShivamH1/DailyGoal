@@ -147,3 +147,54 @@ test('migrateLegacy does not throw when localStorage is unavailable', () => {
     });
   }
 });
+
+test('migrateLegacy keeps the legacy data when the new key cannot be written', () => {
+  /* Quota-exceeded is the realistic shape here, and a migration is exactly
+     when it bites: for a moment the progress object is stored twice. setItem
+     throws while getItem and removeItem keep working — deleting frees space
+     rather than consuming it, so the cleanup would happily succeed and take
+     the only surviving copy with it. */
+  const legacy = { '2026-08-20': { w: 1 }, '2026-08-21': { w: 2 } };
+  const store = fakeStore({ 'weekly-innings-progress': JSON.stringify(legacy) });
+  const realSet = store.setItem;
+  store.setItem = (k, v) => {
+    if (k.startsWith('wi:')) throw new Error('QuotaExceededError');
+    return realSet(k, v);
+  };
+
+  assert.equal(migrateLegacy('u1', store), false, 'must report failure, not success');
+  assert.deepEqual(
+    JSON.parse(store._dump()['weekly-innings-progress']), legacy,
+    'the legacy history must still be there to retry from',
+  );
+});
+
+test('a half-written migration can still be retried on the next sign-in', () => {
+  /* The skip guard tests the progress key, so progress must be the last thing
+     written. If a failure could leave progress populated but pending missing,
+     every later attempt would see a migrated account and skip — stranding the
+     unsynced dates permanently. */
+  const legacy = { '2026-08-20': { w: 1 } };
+  const store = fakeStore({
+    'weekly-innings-progress': JSON.stringify(legacy),
+    'weekly-innings-pending': JSON.stringify(['2026-08-20']),
+  });
+  const realSet = store.setItem;
+  let failPending = true;
+  store.setItem = (k, v) => {
+    if (failPending && k === 'wi:u1:pending') throw new Error('QuotaExceededError');
+    return realSet(k, v);
+  };
+
+  assert.equal(migrateLegacy('u1', store), false);
+  setNamespace('u1');
+  assert.deepEqual(loadProgress(store), {}, 'nothing half-migrated');
+  setNamespace(null);
+
+  failPending = false;
+  assert.equal(migrateLegacy('u1', store), true, 'the retry must not be skipped');
+  setNamespace('u1');
+  assert.deepEqual(loadProgress(store), legacy);
+  assert.deepEqual(loadPending(store), ['2026-08-20']);
+  setNamespace(null);
+});
