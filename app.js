@@ -233,6 +233,14 @@ async function flushSync() {
        pick up. clearPending is not called on this path. */
     if (isAuthError(err)) {
       enterSignedOut();
+    } else if (signedOut) {
+      /* initSync fires flushSync() without awaiting it, then awaits its own
+         pull, so a push can still be in flight when the pull discovers the
+         session is dead. If that push then fails for an ordinary network
+         reason, its branch would write "retrying sync" over "signed out" —
+         retrying being the one thing that cannot help here. The queue is
+         untouched either way; only the message would have been wrong. */
+      describeIdle();
     } else if (attempt < 4) {
       /* Back off 1s, 2s, 4s, 8s, then stop and wait for the next tick or an
          'online' event. An unbounded retry loop would burn battery all day. */
@@ -619,6 +627,11 @@ document.getElementById('signInBtn').addEventListener('click', async () => {
 
 signOutBtn.addEventListener('click', async () => {
   await signOut({});
+  /* The reload is load-bearing, not just tidiness: storage.js's namespace is
+     module state, and nothing else resets it. Drop the reload and the next
+     account to sign in on this browser inherits the previous one's namespace
+     and reads their data. If this ever becomes a soft transition, call
+     setNamespace('') explicitly first. */
   location.reload();
 });
 
