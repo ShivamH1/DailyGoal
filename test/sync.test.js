@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toRow, fromRows, pull, push, normalizeBase } from '../sync.js';
+import { toRow, fromRows, pull, push, normalizeBase, authedFetch, isAuthError } from '../sync.js';
 
 const tok = (t = 'AT') => async () => t;
 
@@ -166,4 +166,23 @@ test('fromRows passes through a timestamp it cannot parse instead of throwing', 
 test('a missing timestamp becomes empty so the record loses a merge', () => {
   const p = fromRows([{ date: '2026-08-20', study: true, workout: false, sleep: false, note: null, updated_at: null }]);
   assert.equal(p['2026-08-20'].u, '');
+});
+
+test('isAuthError recognises the dead-session error and nothing else', () => {
+  /* flushSync's catch (app.js) needs to tell a revoked session from a flaky
+     connection so it can stop retrying the one no retry will ever fix. A
+     loose check (message contains "sign", instanceof TypeError, etc.) would
+     also catch a real network failure and silently swallow retries for it. */
+  assert.equal(isAuthError(new Error('not signed in')), true);
+  assert.equal(isAuthError(new TypeError('Failed to fetch')), false);
+  assert.equal(isAuthError(new Error('pull failed: 500')), false);
+  assert.equal(isAuthError('not signed in'), false, 'a bare string is not an Error');
+  assert.equal(isAuthError(null), false);
+});
+
+test('authedFetch throws an error isAuthError recognises when there is no token', async () => {
+  await assert.rejects(
+    () => authedFetch('https://x/y', {}, { getToken: async () => null }),
+    (err) => isAuthError(err)
+  );
 });

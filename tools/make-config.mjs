@@ -1,6 +1,9 @@
 /* Generates the gitignored config.js from .env (local) or from process.env
-   (Vercel build). Reads only the three values the browser needs — never
+   (Vercel build). Reads only the two values the browser needs — never
    SECRET_KEY, never DATABASE_URL. Run: node tools/make-config.mjs
+
+   USER_ID is gone: rows are keyed to auth.uid() and RLS checks the token.
+   A .env that still declares it is simply ignored.
 
    parseEnv is exported and covered by test/config.test.js. Generation only
    runs when this file is executed directly, so importing it is inert. */
@@ -73,18 +76,17 @@ function generate() {
    Regenerate with: npm run config */
 export const SUPABASE_URL = ${JSON.stringify(base)};
 export const SUPABASE_ANON_KEY = ${JSON.stringify(pick(...KEY_KEYS))};
-export const USER_ID = ${JSON.stringify(pick('USER_ID'))};
 `);
 
   /* Name the whole accepted pair in the warning, so someone whose .env uses
      the other spelling is not sent looking for a variable they deliberately
      did not set. */
-  const missing = [URL_KEYS, KEY_KEYS, ['USER_ID']]
+  const missing = [URL_KEYS, KEY_KEYS]
     .filter((names) => !pick(...names))
     .map((names) => names.join(' or '));
   console.log(missing.length
     ? `config.js written; MISSING ${missing.join('; ')} — the app will run local-only`
-    : 'config.js written with all three values');
+    : 'config.js written with both values');
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) generate();

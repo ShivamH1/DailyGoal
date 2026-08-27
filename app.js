@@ -1,11 +1,14 @@
-import { loadProgress, saveProgress, loadPending, markPending, clearPending } from './storage.js';
+import {
+  loadProgress, saveProgress, loadPending, markPending, clearPending,
+  setNamespace, migrateLegacy,
+} from './storage.js';
 import { clearableDates, computeStreak, growthVals, mergeProgress, toCSV, weeklySummary, weekStart } from './progress.js';
-import { pull, push, isConfigured } from './sync.js';
+import { pull, push, isConfigured, isAuthError } from './sync.js';
 import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
 import {
   isAuthConfigured, loadSession, completeSignIn, beginSignIn, signOut,
-  stripAuthParams, authView,
+  stripAuthParams, authView, currentUserId,
 } from './auth.js';
 
 /* ---------- day panels ---------- */
@@ -142,6 +145,11 @@ let flushing = false;
    pull with an empty queue falls through to setSyncStatus(''), which is
    exactly what a healthy idle app looks like. */
 let offline = false;
+/* Set when authedFetch reports there is no session to attach a token from —
+   a revoked or expired refresh token, distinct from `offline`. No amount of
+   retrying fixes this, and calling it "offline" would send the user hunting
+   for a network problem that does not exist. */
+let signedOut = false;
 
 function setSyncStatus(text, color) {
   syncEl.textContent = text;
@@ -151,6 +159,13 @@ function setSyncStatus(text, color) {
 function describeIdle() {
   const pending = loadPending();
   if (!isConfigured()) return setSyncStatus('local only · sync not configured');
+  /* Checked before `offline`: both can theoretically be true (a dead session
+     discovered, then a later network attempt also fails) and "offline" would
+     be the more misleading of the two to show, since it invites waiting for
+     a connection to come back rather than signing in again. */
+  if (signedOut) return setSyncStatus(
+    pending.length ? `signed out · ${pending.length} unsynced` : 'signed out',
+    'var(--warn)');
   /* Queued and failed are different states. During the 600 ms debounce, or
      with a push in flight on a perfectly good connection, there is pending
      work and nothing is wrong — saying "offline" there is just false. */
@@ -189,12 +204,28 @@ async function flushSync() {
     lastSyncAt = Date.now();
     attempt = 0;
     offline = false;
+    signedOut = false;
     if (loadPending().length) armFlush();
     describeIdle();
-  } catch {
-    /* Back off 1s, 2s, 4s, 8s, then stop and wait for the next tick or an
-       'online' event. An unbounded retry loop would burn battery all day. */
-    if (attempt < 4) {
+  } catch (err) {
+    /* authedFetch throws this exact, stable error when there is no session to
+       attach a token from — a refresh token the server has already rejected.
+       No number of retries recovers that, so the backoff below is for a
+       genuine network failure only; this branch never schedules one, and the
+       queue is left exactly as markPending wrote it for the next sign-in to
+       pick up. clearPending is not called on this path. */
+    if (isAuthError(err)) {
+      clearTimeout(syncTimer);
+      attempt = 0;
+      offline = false;
+      signedOut = true;
+      describeIdle();
+      authError.textContent =
+        'Your sign-in expired. Sign in again — nothing here was lost.';
+      showView('signed-out');
+    } else if (attempt < 4) {
+      /* Back off 1s, 2s, 4s, 8s, then stop and wait for the next tick or an
+         'online' event. An unbounded retry loop would burn battery all day. */
       attempt++;
       setSyncStatus(`retrying sync (${attempt}/4)…`, 'var(--warn)');
       clearTimeout(syncTimer);
@@ -516,6 +547,15 @@ function tick() {
    once there is a session — reading progress before we know which account we
    are is exactly the bug namespacing exists to prevent (Task 8). */
 function startApp() {
+  /* migrate-then-namespace reads in the order the data actually moves: adopt
+     whatever was written before accounts existed, then point every storage.js
+     read/write at this account. migrateLegacy takes the uid as an explicit
+     argument (never the module namespace — see keyFor's default parameter),
+     so this ordering is a readability choice, not a correctness dependency;
+     the two calls could run in either order with the same result. */
+  const uid = currentUserId();
+  migrateLegacy(uid);
+  setNamespace(uid);
   DAY_KEYS.forEach(renderDay);
   renderNow();
   showDay(istNow().dayKey);

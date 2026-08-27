@@ -75,3 +75,16 @@ create policy own_schedule on user_schedule
 -- the mistake this project already made once with anon.
 grant select, insert, update, delete on user_profile  to authenticated;
 grant select, insert, update, delete on user_schedule to authenticated;
+
+-- ============================================================
+-- Phase 3 cutover — NOT YET RUN.
+--
+-- Do not apply this until the project owner's pre-account rows have been
+-- migrated (Task 7, blocked on completing Google sign-in setup) and the
+-- client authenticates on every request (Tasks 8-9, code-complete as of this
+-- commit but not yet exercised against the live project). Applying it first
+-- would orphan the owner's existing rows behind a policy that no longer
+-- matches anything, with no anon fallback left to read them back out.
+-- ============================================================
+drop policy if exists single_user on daily_progress;
+revoke all on daily_progress from anon;

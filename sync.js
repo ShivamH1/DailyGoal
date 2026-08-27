@@ -34,17 +34,25 @@ const headers = (token, extra = {}) => ({
   ...extra,
 });
 
+/* Thrown by authedFetch when there is no session to attach a token from —
+   never for a request that was sent and failed. Callers that need to tell a
+   dead session from a flaky connection (app.js's flushSync) branch on this
+   exact message via isAuthError rather than re-deriving it, so the two stay
+   in sync by construction. */
+export const AUTH_ERROR_MESSAGE = 'not signed in';
+export const isAuthError = (err) => err instanceof Error && err.message === AUTH_ERROR_MESSAGE;
+
 /* PostgREST can reject a token this client still believes in — a clock skew,
    or simply an app left open past the hour. One forced refresh and one retry;
    a second 401 is a real failure and is thrown, because retrying it again
    would be a loop rather than a recovery. */
 export async function authedFetch(url, opts = {}, { fetchImpl = globalThis.fetch, getToken = accessToken } = {}) {
   let token = await getToken();
-  if (!token) throw new Error('not signed in');
+  if (!token) throw new Error(AUTH_ERROR_MESSAGE);
   let res = await fetchImpl(url, { ...opts, headers: headers(token, opts.headers), ...deadline() });
   if (res.status !== 401) return res;
   token = await getToken({ force: true });
-  if (!token) throw new Error('not signed in');
+  if (!token) throw new Error(AUTH_ERROR_MESSAGE);
   return fetchImpl(url, { ...opts, headers: headers(token, opts.headers), ...deadline() });
 }
 

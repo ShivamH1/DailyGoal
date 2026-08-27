@@ -169,6 +169,27 @@ test('migrateLegacy keeps the legacy data when the new key cannot be written', (
   );
 });
 
+test('migrateLegacy is independent of whatever the module namespace holds', () => {
+  /* migrateLegacy takes uid as an explicit argument and never consults
+     getNamespace()/keyFor's default namespace — every key it touches is
+     either a LEGACY.* constant or keyFor(name, uid) with uid passed
+     explicitly. That is what makes migrate-then-setNamespace and
+     setNamespace-then-migrate equivalent in app.js's startApp(); it is not,
+     as an earlier draft of this plan claimed, that calling setNamespace
+     first would make migrateLegacy see an account that already has progress
+     and refuse to move it. Pinned here so a future rewrite that starts
+     reading module state instead of the uid argument fails loudly instead
+     of silently reading the wrong account's keys. */
+  const store = fakeStore({
+    'weekly-innings-progress': JSON.stringify({ '2026-08-20': { s: 1 } }),
+  });
+  setNamespace('someone-else');
+  assert.equal(migrateLegacy('u1', store), true);
+  setNamespace('u1');
+  assert.deepEqual(loadProgress(store), { '2026-08-20': { s: 1 } });
+  setNamespace(null);
+});
+
 test('a half-written migration can still be retried on the next sign-in', () => {
   /* The skip guard tests the progress key, so progress must be the last thing
      written. If a failure could leave progress populated but pending missing,
