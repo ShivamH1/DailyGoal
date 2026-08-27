@@ -195,6 +195,12 @@ ul{list-style:none;margin:0;padding:0}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 input{font:inherit}
 svg{display:block}
+
+/* The `hidden` attribute is how the signed-out gate hides things, and any
+   class that sets `display` silently outranks the UA rule for it — .export
+   did exactly that, leaving the export buttons live behind the gate. This
+   makes the attribute mean what it says wherever it is used. */
+[hidden]{display:none!important}
 ::selection{background:var(--selection)}
 
 :focus{outline:none}
