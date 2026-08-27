@@ -272,3 +272,43 @@ test('pushDoc refreshes the token once on a 401 and retries, like push()', async
   await pushDoc('profile', { season: 'S' }, 'T', { fetchImpl, getToken });
   assert.equal(calls, 2);
 });
+
+test('pushDoc names its conflict target instead of hoping PostgREST infers it', async () => {
+  /* PostgREST's rule: "By default, upsert operates based on the primary key
+     columns, so you must specify all of them." We deliberately do not send
+     user_id — it is the primary key and defaults to auth.uid(), and the client
+     should not be trusted to state whose row this is. Naming the target in the
+     query string satisfies the rule without putting the uid in the body. */
+  let seen = '';
+  const fetchImpl = async (url) => { seen = url; return { ok: true, status: 200 }; };
+  await pushDoc('profile', { season: 'x' }, '2026-08-27T00:00:00.000Z',
+    { fetchImpl, getToken: async () => 'AT' });
+  assert.match(seen, /[?&]on_conflict=user_id\b/);
+});
+
+test('pushDoc refuses to send a document with no timestamp', async () => {
+  /* updated_at carries no column default precisely so a stale offline edit
+     cannot outrank a newer one. JSON.stringify DROPS an undefined value
+     rather than erroring, so without this guard the field would simply be
+     absent from the body and the write would look like it worked. */
+  let called = false;
+  const fetchImpl = async () => { called = true; return { ok: true, status: 200 }; };
+  await assert.rejects(
+    () => pushDoc('profile', { season: 'x' }, undefined, { fetchImpl, getToken: async () => 'AT' }),
+    /timestamp/,
+  );
+  assert.equal(called, false, 'nothing should reach the network');
+});
+
+test('a failing pushDoc still says which document and status when the body cannot be read', async () => {
+  /* res.text() sat inside the throw expression, so a body that failed to read
+     replaced the real error with its own and lost both the status and which
+     document it was. */
+  const fetchImpl = async () => ({
+    ok: false, status: 500, text: async () => { throw new Error('body blew up'); },
+  });
+  await assert.rejects(
+    () => pushDoc('profile', {}, '2026-08-27T00:00:00.000Z', { fetchImpl, getToken: async () => 'AT' }),
+    /push profile failed: 500/,
+  );
+});

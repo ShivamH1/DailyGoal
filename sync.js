@@ -141,13 +141,29 @@ export async function pullDoc(kind, opts = {}) {
 
 export async function pushDoc(kind, value, updatedAt, opts = {}) {
   const { table, field } = docSpec(kind);
-  const res = await authedFetch(`${BASE}/rest/v1/${table}`, {
+  /* JSON.stringify DROPS an undefined value rather than erroring, so without
+     this the field would simply be missing from the body and the write would
+     look like it succeeded. updated_at carries no column default precisely so
+     a stale offline edit cannot outrank a newer one; a silently absent one
+     hands that protection back. */
+  if (updatedAt == null) throw new Error(`push ${kind} failed: no timestamp`);
+  /* on_conflict names the target explicitly. PostgREST's default upsert
+     "operates based on the primary key columns, so you must specify all of
+     them" — and we deliberately do not send user_id, because it defaults to
+     auth.uid() and the client has no business asserting whose row this is.
+     Naming the target in the query string satisfies the rule without putting
+     a uid in the body. */
+  const res = await authedFetch(`${BASE}/rest/v1/${table}?on_conflict=user_id`, {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-    /* user_id is omitted: it is the primary key and defaults to auth.uid().
-       See the verification step in the plan — if PostgREST will not infer the
-       conflict target from a payload that omits it, send it from the session. */
     body: JSON.stringify({ [field]: value, updated_at: updatedAt }),
   }, opts);
-  if (!res.ok) throw new Error(`push ${kind} failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    /* Read the body in its own right. Awaiting it inside the throw meant a
+       body that failed to read replaced the real error with its own, losing
+       both the status and which document it was. */
+    let detail = '';
+    try { detail = await res.text(); } catch { /* keep the status */ }
+    throw new Error(`push ${kind} failed: ${res.status} ${detail}`.trim());
+  }
 }
