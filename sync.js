@@ -141,12 +141,24 @@ export async function pullDoc(kind, opts = {}) {
 
 export async function pushDoc(kind, value, updatedAt, opts = {}) {
   const { table, field } = docSpec(kind);
-  /* JSON.stringify DROPS an undefined value rather than erroring, so without
-     this the field would simply be missing from the body and the write would
-     look like it succeeded. updated_at carries no column default precisely so
-     a stale offline edit cannot outrank a newer one; a silently absent one
-     hands that protection back. */
-  if (updatedAt == null) throw new Error(`push ${kind} failed: no timestamp`);
+  /* JSON.stringify DROPS an undefined value rather than erroring, so an absent
+     field is not an error anywhere — it is simply missing from the body, and
+     the write looks like it succeeded.
+
+     For updated_at that matters because it carries no column default, exactly
+     so a stale offline edit cannot outrank a newer one; a silently absent one
+     hands that protection back. An empty string is falsy but not == null, and
+     pullDoc yields u: '' when it cannot read the column, so a round-tripped
+     document can carry one.
+
+     For the document itself the ending is worse. On a first save the column is
+     simply absent and Postgres fills the default. On a later save PostgREST's
+     DO UPDATE SET names only the columns present in the payload, so the
+     document is left untouched while updated_at is still bumped — the row then
+     looks freshly written to every other device while holding none of what was
+     written. */
+  if (value == null) throw new Error(`push ${kind} failed: no value`);
+  if (updatedAt == null || updatedAt === '') throw new Error(`push ${kind} failed: no timestamp`);
   /* on_conflict names the target explicitly. PostgREST's default upsert
      "operates based on the primary key columns, so you must specify all of
      them" — and we deliberately do not send user_id, because it defaults to

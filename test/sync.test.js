@@ -312,3 +312,32 @@ test('a failing pushDoc still says which document and status when the body canno
     /push profile failed: 500/,
   );
 });
+
+test('pushDoc refuses to send a document with no value', async () => {
+  /* The same silent-drop hazard as the timestamp, with a worse ending. On a
+     first save JSON.stringify omits the column and Postgres fills the default
+     '{}'. On a later save PostgREST's DO UPDATE SET only names columns present
+     in the payload, so the document is left untouched while updated_at is
+     still bumped — the row then looks freshly written on every other device
+     while holding none of what was written. */
+  let called = false;
+  const fetchImpl = async () => { called = true; return { ok: true, status: 200 }; };
+  await assert.rejects(
+    () => pushDoc('profile', undefined, '2026-08-27T00:00:00.000Z',
+      { fetchImpl, getToken: async () => 'AT' }),
+    /no value/,
+  );
+  assert.equal(called, false, 'nothing should reach the network');
+});
+
+test('pushDoc refuses a blank timestamp, not just a missing one', async () => {
+  /* pullDoc itself yields u: '' when canonicalTime cannot read the column, so
+     a round-tripped document can carry an empty string. It is falsy but not
+     == null, so it slipped the guard and failed later at the timestamptz cast
+     with a Postgres error instead of here with a plain one. */
+  const fetchImpl = async () => ({ ok: true, status: 200 });
+  await assert.rejects(
+    () => pushDoc('profile', { season: 'x' }, '', { fetchImpl, getToken: async () => 'AT' }),
+    /timestamp/,
+  );
+});
