@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  loadProgress, saveProgress, loadPending, markPending, clearPending
+  loadProgress, saveProgress, loadPending, markPending, clearPending,
+  setNamespace, getNamespace, keyFor, migrateLegacy
 } from '../storage.js';
 
 /* Minimal stand-in for the Web Storage API — only the four members
@@ -66,4 +67,83 @@ test('saveProgress reports the failure rather than only swallowing it', () => {
 
 test('a successful saveProgress reports true', () => {
   assert.equal(saveProgress({ '2026-08-20': { s: 1 } }, fakeStore()), true);
+});
+
+test('with no namespace the legacy keys are used', () => {
+  /* Nothing may move until we know which account we are. */
+  setNamespace(null);
+  assert.equal(keyFor('progress'), 'weekly-innings-progress');
+  assert.equal(keyFor('pending'), 'weekly-innings-pending');
+});
+
+test('a namespace scopes every key to the account', () => {
+  setNamespace('u1');
+  assert.equal(keyFor('progress'), 'wi:u1:progress');
+  assert.equal(getNamespace(), 'u1');
+  setNamespace(null);
+});
+
+test('two accounts in one browser cannot see each other', () => {
+  /* The whole reason this exists: two Google accounts on one laptop used to
+     share weekly-innings-progress and silently overwrite one another. */
+  const store = fakeStore();
+  setNamespace('u1');
+  saveProgress({ '2026-08-20': { s: 1 } }, store);
+  setNamespace('u2');
+  assert.deepEqual(loadProgress(store), {});
+  saveProgress({ '2026-08-21': { w: 1 } }, store);
+  setNamespace('u1');
+  assert.deepEqual(loadProgress(store), { '2026-08-20': { s: 1 } });
+  setNamespace(null);
+});
+
+test('migrateLegacy moves the old keys into the account and removes them', () => {
+  const store = fakeStore({
+    'weekly-innings-progress': JSON.stringify({ '2026-08-20': { s: 1, w: 1 } }),
+    'weekly-innings-pending': JSON.stringify(['2026-08-20']),
+  });
+  assert.equal(migrateLegacy('u1', store), true);
+  setNamespace('u1');
+  assert.deepEqual(loadProgress(store), { '2026-08-20': { s: 1, w: 1 } });
+  assert.deepEqual(loadPending(store), ['2026-08-20']);
+  assert.equal(store._dump()['weekly-innings-progress'], undefined);
+  assert.equal(store._dump()['weekly-innings-pending'], undefined);
+  setNamespace(null);
+});
+
+test('migrateLegacy refuses to overwrite an account that already has data', () => {
+  /* Signing in as a second account on a laptop that still holds the first
+     account's pre-migration data must not graft one onto the other. */
+  const store = fakeStore({ 'weekly-innings-progress': JSON.stringify({ '2026-01-01': { s: 1 } }) });
+  setNamespace('u2');
+  saveProgress({ '2026-08-20': { w: 1 } }, store);
+  setNamespace(null);
+  assert.equal(migrateLegacy('u2', store), false);
+  setNamespace('u2');
+  assert.deepEqual(loadProgress(store), { '2026-08-20': { w: 1 } });
+  setNamespace(null);
+});
+
+test('migrateLegacy is a no-op when there is nothing to move', () => {
+  assert.equal(migrateLegacy('u1', fakeStore()), false);
+});
+
+test('migrateLegacy does not throw when localStorage is unavailable', () => {
+  /* Safari Lockdown Mode, storage fully disabled, or embedded contexts can
+     throw a SecurityError on mere ACCESS to globalThis.localStorage, not just
+     on getItem/setItem — migrateLegacy calls with no explicit store must not
+     let that access escape uncaught. */
+  const savedStorage = globalThis.localStorage;
+  try {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() { throw new Error('storage off'); },
+    });
+    assert.doesNotThrow(() => migrateLegacy('u1'));
+  } finally {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: savedStorage,
+    });
+  }
 });

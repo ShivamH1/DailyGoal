@@ -1,8 +1,23 @@
 /* The localStorage tier. Always written synchronously on every tick, so the
    app is correct and instant with no network at all. */
 
-const PROGRESS_KEY = 'weekly-innings-progress';
-const PENDING_KEY = 'weekly-innings-pending';
+/* Keys are scoped to the signed-in account. They were global, which meant two
+   Google accounts in one browser shared one progress object and overwrote
+   each other with no sign that anything had happened. */
+const LEGACY = {
+  progress: 'weekly-innings-progress',
+  pending: 'weekly-innings-pending',
+};
+
+let namespace = '';
+
+export function setNamespace(uid) { namespace = uid || ''; }
+export function getNamespace() { return namespace; }
+
+/* No namespace means no account is known yet, and the only safe answer is the
+   pre-migration key — never a half-formed 'wi::progress' that two different
+   signed-out states would share. */
+export const keyFor = (name, ns = namespace) => (ns ? `wi:${ns}:${name}` : LEGACY[name]);
 
 const defaultStore = () => globalThis.localStorage;
 
@@ -29,19 +44,45 @@ function write(key, value, store) {
   }
 }
 
-export const loadProgress = (store) => read(PROGRESS_KEY, {}, store);
-export const saveProgress = (progress, store) => write(PROGRESS_KEY, progress, store);
+export const loadProgress = (store) => read(keyFor('progress'), {}, store);
+export const saveProgress = (progress, store) => write(keyFor('progress'), progress, store);
 
 export function loadPending(store) {
-  const v = read(PENDING_KEY, [], store);
+  const v = read(keyFor('pending'), [], store);
   return Array.isArray(v) ? v : [];
 }
 
 export function markPending(dates, store) {
-  write(PENDING_KEY, [...new Set([...loadPending(store), ...dates])], store);
+  write(keyFor('pending'), [...new Set([...loadPending(store), ...dates])], store);
 }
 
 export function clearPending(dates, store) {
   const gone = new Set(dates);
-  write(PENDING_KEY, loadPending(store).filter((d) => !gone.has(d)), store);
+  write(keyFor('pending'), loadPending(store).filter((d) => !gone.has(d)), store);
+}
+
+/* One-off, on first sign-in: adopt the data written before accounts existed.
+   Refuses when the account already has its own progress — a second account
+   signing in on the same laptop must not inherit the first one's history.
+
+   Every touch of globalThis.localStorage here goes through read/write (which
+   guard their own store resolution) or through the try block below — never
+   through a bare `store || defaultStore()` outside a try, because on Lockdown
+   Mode and similar restricted contexts the *access* to globalThis.localStorage
+   can throw, not just getItem/setItem/removeItem. */
+export function migrateLegacy(uid, store) {
+  if (!uid) return false;
+  const legacy = read(LEGACY.progress, null, store);
+  if (!legacy || !Object.keys(legacy).length) return false;
+  if (Object.keys(read(keyFor('progress', uid), {}, store)).length) return false;
+
+  write(keyFor('progress', uid), legacy, store);
+  const pending = read(LEGACY.pending, [], store);
+  if (Array.isArray(pending) && pending.length) write(keyFor('pending', uid), pending, store);
+  try {
+    const s = store || defaultStore();
+    s.removeItem(LEGACY.progress);
+    s.removeItem(LEGACY.pending);
+  } catch { /* storage off */ }
+  return true;
 }
