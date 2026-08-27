@@ -114,3 +114,40 @@ export async function push(progress, dates, opts = {}) {
   }, opts);
   if (!res.ok) throw new Error(`push failed: ${res.status} ${await res.text()}`);
 }
+
+/* Two document tables beside the per-date one. Both are read and written
+   whole, which is why they are documents and not rows. */
+const DOCS = {
+  profile:  { table: 'user_profile',  field: 'data' },
+  schedule: { table: 'user_schedule', field: 'week' },
+};
+
+const docSpec = (kind) => {
+  const spec = DOCS[kind];
+  if (!spec) throw new Error(`unknown document: ${kind}`);
+  return spec;
+};
+
+export async function pullDoc(kind, opts = {}) {
+  const { table, field } = docSpec(kind);
+  const res = await authedFetch(`${BASE}/rest/v1/${table}?select=${field},updated_at`, {}, opts);
+  if (!res.ok) throw new Error(`pull ${kind} failed: ${res.status}`);
+  const rows = await res.json();
+  /* No row is not an empty document: the wizard uses the difference to decide
+     whether this account has ever been set up. */
+  if (!rows.length) return null;
+  return { value: rows[0][field], u: canonicalTime(rows[0].updated_at) };
+}
+
+export async function pushDoc(kind, value, updatedAt, opts = {}) {
+  const { table, field } = docSpec(kind);
+  const res = await authedFetch(`${BASE}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    /* user_id is omitted: it is the primary key and defaults to auth.uid().
+       See the verification step in the plan — if PostgREST will not infer the
+       conflict target from a payload that omits it, send it from the session. */
+    body: JSON.stringify({ [field]: value, updated_at: updatedAt }),
+  }, opts);
+  if (!res.ok) throw new Error(`push ${kind} failed: ${res.status} ${await res.text()}`);
+}

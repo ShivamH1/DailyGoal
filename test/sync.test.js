@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toRow, fromRows, pull, push, normalizeBase, authedFetch, isAuthError } from '../sync.js';
+import { toRow, fromRows, pull, push, normalizeBase, authedFetch, isAuthError, pullDoc, pushDoc } from '../sync.js';
 
 const tok = (t = 'AT') => async () => t;
 
@@ -185,4 +185,90 @@ test('authedFetch throws an error isAuthError recognises when there is no token'
     () => authedFetch('https://x/y', {}, { getToken: async () => null }),
     (err) => isAuthError(err)
   );
+});
+
+test('pullDoc reads the profile row and canonicalises its timestamp', async () => {
+  let seen;
+  const fetchImpl = async (url) => {
+    seen = url;
+    return { ok: true, status: 200, json: async () => ([{ data: { season: 'S' }, updated_at: '2026-08-20T12:00:00+00:00' }]) };
+  };
+  const doc = await pullDoc('profile', { fetchImpl, getToken: tok() });
+  assert.match(seen, /\/rest\/v1\/user_profile\?select=data,updated_at$/);
+  assert.deepEqual(doc.value, { season: 'S' });
+  assert.equal(doc.u, '2026-08-20T12:00:00.000Z');
+});
+
+test('pullDoc reads the schedule from its own table and column', async () => {
+  let seen;
+  const fetchImpl = async (url) => { seen = url; return { ok: true, status: 200, json: async () => ([]) }; };
+  await pullDoc('schedule', { fetchImpl, getToken: tok() });
+  assert.match(seen, /\/rest\/v1\/user_schedule\?select=week,updated_at$/);
+});
+
+test('pullDoc returns null for a user who has never saved one', async () => {
+  /* Distinct from an empty document: null means "no row", which is what the
+     onboarding wizard tests to decide whether to run. */
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ([]) });
+  assert.equal(await pullDoc('profile', { fetchImpl, getToken: tok() }), null);
+});
+
+test('pushDoc upserts the document with an explicit updated_at', async () => {
+  let seen;
+  const fetchImpl = async (url, opts) => { seen = { url, opts }; return { ok: true, status: 200, text: async () => '' }; };
+  await pushDoc('profile', { season: 'S' }, '2026-08-20T12:00:00.000Z', { fetchImpl, getToken: tok() });
+  assert.deepEqual(JSON.parse(seen.opts.body), { data: { season: 'S' }, updated_at: '2026-08-20T12:00:00.000Z' });
+  assert.match(seen.opts.headers.Prefer, /resolution=merge-duplicates/);
+  assert.equal('user_id' in JSON.parse(seen.opts.body), false);
+});
+
+test('pushDoc throws on a non-2xx so the caller can requeue', async () => {
+  const fetchImpl = async () => ({ ok: false, status: 409, text: async () => 'conflict' });
+  await assert.rejects(
+    () => pushDoc('schedule', {}, 'T', { fetchImpl, getToken: tok() }),
+    /409/
+  );
+});
+
+test('an unknown document kind throws rather than building a URL from undefined', async () => {
+  await assert.rejects(() => pullDoc('nope', { fetchImpl: async () => ({}), getToken: tok() }), /unknown document/);
+});
+
+test('pushDoc does not mutate the document it is given, even when the request fails', async () => {
+  /* pushDoc has no local-storage side effects at all — it only ever throws.
+     A failed push must not be able to corrupt the caller's in-memory local
+     document, which is what keeps local-first "local wins the right to
+     exist" true even when the network rejects the write. */
+  const value = { season: 'S' };
+  const before = JSON.stringify(value);
+  const fetchImpl = async () => ({ ok: false, status: 500, text: async () => 'boom' });
+  await assert.rejects(() => pushDoc('profile', value, 'T', { fetchImpl, getToken: tok() }));
+  assert.equal(JSON.stringify(value), before);
+});
+
+test('pullDoc makes no request and rejects when there is no token', async () => {
+  /* Document reads go through authedFetch rather than a second, ad-hoc auth
+     path — so a dead session must fail the same way pull() already does,
+     before any request is sent. */
+  let called = false;
+  await assert.rejects(
+    () => pullDoc('profile', { fetchImpl: async () => { called = true; }, getToken: async () => null }),
+    (err) => isAuthError(err)
+  );
+  assert.equal(called, false);
+});
+
+test('pushDoc refreshes the token once on a 401 and retries, like push()', async () => {
+  /* Proves pushDoc is riding authedFetch's existing refresh-retry rather than
+     a bespoke implementation that could drift from it. */
+  let calls = 0;
+  const fetchImpl = async (_url, opts) => {
+    calls++;
+    if (calls === 1) return { ok: false, status: 401, text: async () => 'JWT expired' };
+    assert.equal(opts.headers.Authorization, 'Bearer NEW');
+    return { ok: true, status: 200, text: async () => '' };
+  };
+  const getToken = async ({ force } = {}) => (force ? 'NEW' : 'OLD');
+  await pushDoc('profile', { season: 'S' }, 'T', { fetchImpl, getToken });
+  assert.equal(calls, 2);
 });
