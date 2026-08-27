@@ -34,7 +34,17 @@
       <p class="season">Season 2026 · Pune</p>
     </header>
 
-    <main>
+    <!-- Shown when signed out. The app itself is hidden rather than
+         unrendered: rendering is gated in app.js, so nothing below this
+         point runs until there is a session. -->
+    <section class="gate" id="authGate" hidden>
+      <h2>Sign in to keep your streak</h2>
+      <p>Your days, your schedule and your notes sync across every device you sign in on.</p>
+      <button class="gate-btn" id="signInBtn" type="button">Continue with Google</button>
+      <p class="gate-error" id="authError" role="alert"></p>
+    </section>
+
+    <main id="appMain" hidden>
 
       <!-- 1 · HERO — the run, and the only part of the page you touch -->
       <section class="hero" aria-label="Today">
@@ -195,6 +205,7 @@
     <footer>
       <p>The Weekly Innings · Season 2026 · Pune</p>
       <p class="export">
+        <button id="signOutBtn" type="button" hidden>Sign out</button>
         <button id="exportJson" type="button">Export JSON</button>
         <button id="exportCsv" type="button">Export CSV</button>
       </p>

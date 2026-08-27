@@ -247,6 +247,17 @@ svg{display:block}
 .now-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .season{margin:0;font-size:12.5px;color:var(--text-muted)}
 
+/* 4.1a The signed-out gate ------------------------------------------------- */
+.gate{text-align:center;padding:3rem 1rem}
+.gate h2{font-family:var(--font-heading);font-weight:var(--font-heading-weight);
+  margin-bottom:.5rem}
+.gate p{color:var(--text-muted);max-width:34ch;margin:0 auto 1.5rem}
+.gate-btn{font:inherit;font-weight:600;cursor:pointer;
+  padding:.75rem 1.5rem;border-radius:999px;
+  background:var(--fill-strong);color:var(--fill-strong-ink);border:0}
+.gate-btn:focus-visible{outline:2px solid var(--color-text);outline-offset:2px}
+.gate-error{color:var(--warn);min-height:1.2em}
+
 /* 4.2 Hero ---------------------------------------------------------------- */
 .hero{display:grid;grid-template-columns:minmax(240px,.72fr) minmax(320px,1fr);
   gap:var(--space-8);align-items:start;margin-bottom:var(--space-section)}

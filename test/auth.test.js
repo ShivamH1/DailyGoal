@@ -336,3 +336,21 @@ test('signOut revokes server-side when it can', async () => {
   assert.match(seen.url, /\/auth\/v1\/logout$/);
   assert.equal(seen.opts.headers.Authorization, 'Bearer AT');
 });
+
+import { authView } from '../auth.js';
+
+test('an unconfigured build says so rather than showing a dead button', () => {
+  /* config.js is generated at build time. If it is missing or still holds
+     placeholders, "Continue with Google" cannot work, and rendering it
+     anyway produces a button that fails with a network error. */
+  assert.equal(authView(false, null), 'unconfigured');
+  assert.equal(authView(false, { access_token: 'a' }), 'unconfigured');
+});
+
+test('no session shows the sign-in gate', () => {
+  assert.equal(authView(true, null), 'signed-out');
+});
+
+test('a session shows the app', () => {
+  assert.equal(authView(true, { access_token: 'a', user_id: 'u' }), 'app');
+});

@@ -229,6 +229,13 @@ export function accessToken({
   return refreshing;
 }
 
+/* Three states, not two. An unconfigured build must not render a sign-in
+   button, because pressing it can only fail. */
+export function authView(configured, session) {
+  if (!configured) return 'unconfigured';
+  return session ? 'app' : 'signed-out';
+}
+
 export async function signOut({
   base = AUTH_BASE, apikey = SUPABASE_ANON_KEY,
   fetchImpl = globalThis.fetch, store,

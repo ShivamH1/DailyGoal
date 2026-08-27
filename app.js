@@ -3,6 +3,10 @@ import { clearableDates, computeStreak, growthVals, mergeProgress, toCSV, weekly
 import { pull, push, isConfigured } from './sync.js';
 import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
+import {
+  isAuthConfigured, loadSession, completeSignIn, beginSignIn, signOut,
+  stripAuthParams, authView, currentUserId,
+} from './auth.js';
 
 /* ---------- day panels ---------- */
 /* The design's time column: 96px, right-aligned, and a '6:45 – 7:45' range
@@ -47,8 +51,6 @@ function renderDay(dayKey) {
     `<div class="blocks">${day.blocks.map((b, i) => rowHTML(dayKey, b, i)).join('')}</div>`;
 }
 
-DAY_KEYS.forEach(renderDay);
-
 /* ---------- NOW ---------- */
 let nowKey = '';
 function renderNow() {
@@ -85,8 +87,6 @@ function renderNow() {
   }
 }
 
-renderNow();
-
 /* ---------- day tabs ---------- */
 const tabs=document.querySelectorAll('.tab'),panels=document.querySelectorAll('.panel');
 function showDay(d){
@@ -94,10 +94,11 @@ function showDay(d){
   panels.forEach(p=>p.classList.toggle('on',p.id==='p-'+d));
 }
 tabs.forEach(t=>t.addEventListener('click',()=>showDay(t.dataset.d)));
-showDay(istNow().dayKey);
 
-/* ---------- progress store ---------- */
-let progress = loadProgress();
+/* Reading storage before we know which account we are is exactly the bug
+   namespacing exists to prevent (Task 8) — startApp() populates this once
+   there is a session. */
+let progress = {};
 
 const saveStatus = document.getElementById('saveStatus');
 /* Save and sync now share one line under the note. They keep one span each —
@@ -402,8 +403,6 @@ function renderExam() {
   line.title = `${next.label} · ${formatExamDates(group.dates)}`;
 }
 
-renderExam();
-
 /* ---------- weekly summary ---------- */
 function renderWeek() {
   const start = weekStart(todayISO());
@@ -470,12 +469,8 @@ document.getElementById('exportCsv').addEventListener('click', () => {
   download(`weekly-innings-${todayISO()}.csv`, toCSV(progress), 'text/csv');
 });
 
-/* ---------- init ---------- */
-renderScorecard();
-renderCalendar();
-renderWeek();
-
-(async () => {
+/* ---------- remote sync bootstrap ---------- */
+async function initSync() {
   if (!isConfigured()) return describeIdle();
   /* The flush is not sequenced behind the pull. A pull that hangs must not
      hold the queue hostage: a hung connection is precisely the case the queue
@@ -503,7 +498,7 @@ renderWeek();
     offline = true;
   }
   if (!flushing) describeIdle();
-})();
+}
 
 /* One tick and one visibility handler for the whole page: the day can roll
    over, the banner can move on and the sync line can age, and all three want
@@ -513,14 +508,82 @@ function tick() {
   renderNow();
   if (!flushing) describeIdle();
 }
-setInterval(tick, 60000);
-window.addEventListener('online', flushSync);
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') tick();
-  else if (loadPending().length) flushSync();
+
+/* ---------- start ---------- */
+/* Everything above this point only defines functions and binds listeners on
+   elements that exist whether or not there is a session. Nothing reads
+   storage or renders data until startApp() runs, and startApp() only runs
+   once there is a session — reading progress before we know which account we
+   are is exactly the bug namespacing exists to prevent (Task 8). */
+function startApp() {
+  DAY_KEYS.forEach(renderDay);
+  renderNow();
+  showDay(istNow().dayKey);
+  progress = loadProgress();
+  renderScorecard();
+  renderCalendar();
+  renderWeek();
+  renderExam();
+  initSync();
+  setInterval(tick, 60000);
+  window.addEventListener('online', flushSync);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') tick();
+    else if (loadPending().length) flushSync();
+  });
+}
+
+/* ---------- the signed-out gate ---------- */
+const gate = document.getElementById('authGate');
+const appMain = document.getElementById('appMain');
+const signOutBtn = document.getElementById('signOutBtn');
+const authError = document.getElementById('authError');
+
+function showView(view) {
+  gate.hidden = view === 'app';
+  appMain.hidden = view !== 'app';
+  signOutBtn.hidden = view !== 'app';
+  if (view === 'unconfigured') {
+    /* textContent, not innerHTML — the rule holds for our own strings too,
+       so there is never a second way of writing text on this page. */
+    authError.textContent =
+      'This build has no Supabase configuration. Run `npm run config` and reload.';
+    document.getElementById('signInBtn').hidden = true;
+  }
+}
+
+document.getElementById('signInBtn').addEventListener('click', async () => {
+  authError.textContent = '';
+  try {
+    await beginSignIn({});
+  } catch (e) {
+    authError.textContent = 'Could not start sign-in. Check your connection and try again.';
+  }
 });
 
+signOutBtn.addEventListener('click', async () => {
+  await signOut({});
+  location.reload();
+});
+
+(async () => {
+  let session = null;
+  try {
+    session = await completeSignIn({});
+    if (session) history.replaceState(null, '', stripAuthParams(location.href));
+  } catch (e) {
+    authError.textContent = 'Sign-in did not complete. Please try again.';
+    history.replaceState(null, '', stripAuthParams(location.href));
+  }
+  session = session || loadSession();
+  const view = authView(isAuthConfigured(), session);
+  showView(view);
+  if (view === 'app') startApp();
+})();
+
 /* ---------- service worker ---------- */
+/* Caching the shell is useful signed out too, so registration stays here
+   rather than moving into startApp(). */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {
