@@ -204,8 +204,11 @@
 
     <footer>
       <p>The Weekly Innings · Season 2026 · Pune</p>
-      <p class="export">
-        <button id="signOutBtn" type="button" hidden>Sign out</button>
+      <!-- Outside <main>, so hiding <main> does not hide these. The bar as a
+           whole is gated instead: exporting an empty progress object while
+           signed out reads as "my data is gone". -->
+      <p class="export" id="accountBar" hidden>
+        <button id="signOutBtn" type="button">Sign out</button>
         <button id="exportJson" type="button">Export JSON</button>
         <button id="exportCsv" type="button">Export CSV</button>
       </p>

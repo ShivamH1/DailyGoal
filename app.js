@@ -5,7 +5,7 @@ import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from './schedule.js';
 import { nextExam, formatExamDates, EXAMS } from './exams.js';
 import {
   isAuthConfigured, loadSession, completeSignIn, beginSignIn, signOut,
-  stripAuthParams, authView, currentUserId,
+  stripAuthParams, authView,
 } from './auth.js';
 
 /* ---------- day panels ---------- */
@@ -537,12 +537,13 @@ function startApp() {
 const gate = document.getElementById('authGate');
 const appMain = document.getElementById('appMain');
 const signOutBtn = document.getElementById('signOutBtn');
+const accountBar = document.getElementById('accountBar');
 const authError = document.getElementById('authError');
 
 function showView(view) {
   gate.hidden = view === 'app';
   appMain.hidden = view !== 'app';
-  signOutBtn.hidden = view !== 'app';
+  accountBar.hidden = view !== 'app';
   if (view === 'unconfigured') {
     /* textContent, not innerHTML — the rule holds for our own strings too,
        so there is never a second way of writing text on this page. */
