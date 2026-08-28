@@ -2562,9 +2562,20 @@ MSG
 **This is the task that removes the owner's content from the codebase.** Before deleting anything, capture it — Task 20 seeds it back as *their profile data*:
 
 ```bash
-mkdir -p docs/superpowers
-# Copy the six rules, the season line and the three tick labels out of
-# index.html into a scratch file first. They become seed data, not code.
+# Ruling 18. Capture to seed-profile.json at the REPO ROOT, and add
+# seed-profile.json to .gitignore in the same commit.
+#
+# NOT docs/ — that is committed, and writing one person's rules and season
+# there would strip the content out of index.html and re-add it to the
+# repository two directories over. NOT a session scratchpad either: Task 21
+# consumes this capture, and it runs after a manual step blocked on the owner,
+# in a later session. The capture has to outlive both.
+#
+# Write it as JSON in the profile document's own shape (see defaultProfile()
+# in profile.js) — season, lanes, ticks, rules, deadlines, onboarded — so
+# Task 21's console snippet can consume the file directly rather than a human
+# re-typing six rules. Capture the rules' titles AND bodies, the tick hints,
+# the lane names, and the deadline dates recovered from the deleted exams.js.
 ```
 
 - [ ] **Step 1: Strip the personal content from `index.html`**
@@ -2632,6 +2643,13 @@ function renderProfile() {
     btn.querySelector('.lbl').textContent = t.label;
     btn.querySelector('.hint').textContent = t.hint;
   }
+
+  /* Ruling 13. renderProfile is the re-render hook called after the profile
+     is committed AND after it is pulled from another device, and the deadline
+     countdown is profile-derived — so it must refresh here. Without this, a
+     pulled or edited profile leaves the old countdown on screen until reload.
+     Any later rewrite of this function must keep this call. */
+  renderDeadline();
 }
 ```
 
@@ -3420,9 +3438,10 @@ The rules, season line and deadlines captured in Task 15 go back in through the 
 
 ```js
 // DevTools console, signed in as the owner.
-// The file lives in the session scratchpad and is deliberately not committed:
-// it is one person's content, which is the thing this project just removed
-// from the codebase.
+// The file is seed-profile.json at the repo root (Ruling 18). It is
+// gitignored and deliberately not committed: it is one person's content,
+// which is the thing this project just removed from the codebase. It is
+// already in the profile document's shape, so paste it as-is.
 const seed = /* paste the captured JSON */;
 localStorage.setItem(`wi:${JSON.parse(localStorage['wi:session']).user_id}:profile`,
   JSON.stringify({ value: seed, u: new Date().toISOString() }));
