@@ -34,6 +34,43 @@ grant select, insert, update, delete on daily_progress to anon;
 alter table daily_progress add column if not exists extras jsonb;
 alter table daily_progress alter column user_id set default auth.uid();
 
+-- v1 left the primary key as `date` alone, which was correct for one user.
+-- Under v2 it means two users cannot both hold a row for the same date —
+-- the modal case, since everybody ticks today. Widen it to (user_id, date).
+-- user_id is already `not null` above, so it needs no redundant not-null
+-- here. Every existing row belongs to a single owner, so this widen cannot
+-- collide on a duplicate (user_id, date) pair — there is only one user_id
+-- value in the table before Task 7 migrates any rows.
+--
+-- MUST be applied before Task 7 migrates the owner's rows onto their new
+-- account, and PostgREST's schema cache MUST be reloaded afterwards — the
+-- PostgREST docs call out a primary-key change by name as required for
+-- upsert to keep working.
+--
+-- Guarded for re-runnability like the rest of this section, but a plain
+-- `if exists`/name check does not work here: Postgres names the primary key
+-- constraint `daily_progress_pkey` regardless of which columns are in it, so
+-- the name is identical before and after this statement has run. The guard
+-- instead asks whether user_id is already a member of the primary key — true
+-- only once this has already been applied.
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.table_constraints tc
+    join information_schema.key_column_usage kcu
+      on kcu.constraint_name = tc.constraint_name
+     and kcu.table_schema = tc.table_schema
+    where tc.table_schema = 'public'
+      and tc.table_name = 'daily_progress'
+      and tc.constraint_type = 'PRIMARY KEY'
+      and kcu.column_name = 'user_id'
+  ) then
+    alter table daily_progress drop constraint if exists daily_progress_pkey;
+    alter table daily_progress add primary key (user_id, date);
+  end if;
+end $$;
+
 drop policy if exists own_rows on daily_progress;
 create policy own_rows on daily_progress
   for all to authenticated

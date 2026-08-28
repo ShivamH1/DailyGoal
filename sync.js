@@ -107,7 +107,13 @@ export async function pull(opts = {}) {
 export async function push(progress, dates, opts = {}) {
   if (!dates.length) return;
   const body = JSON.stringify(dates.map((d) => toRow(d, progress[d])));
-  const res = await authedFetch(`${BASE}/rest/v1/${TABLE}`, {
+  /* on_conflict names the target explicitly. daily_progress's primary key is
+     (user_id, date), and PostgREST's default upsert "operates based on the
+     primary key columns, so you must specify all of them" — we deliberately
+     do not send user_id, because it defaults to auth.uid() and the client has
+     no business asserting whose row this is. Naming the target in the query
+     string satisfies the rule without putting a uid in the body. */
+  const res = await authedFetch(`${BASE}/rest/v1/${TABLE}?on_conflict=user_id,date`, {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
     body,

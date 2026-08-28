@@ -109,6 +109,31 @@ test('push with no dates makes no request at all', async () => {
   assert.equal(called, false);
 });
 
+test('push names its conflict target instead of hoping PostgREST infers it', async () => {
+  /* daily_progress's primary key is (user_id, date). PostgREST's rule: "By
+     default, upsert operates based on the primary key columns, so you must
+     specify all of them." We deliberately do not send user_id — it defaults to
+     auth.uid(), and the client should not be trusted to state whose row this
+     is — so the target has to be named in the query string instead. */
+  let seen = '';
+  const fetchImpl = async (url) => { seen = url; return { ok: true, status: 200 }; };
+  await push({ '2026-08-20': { s: 1 } }, ['2026-08-20'],
+    { fetchImpl, getToken: async () => 'AT' });
+  assert.match(seen, /[?&]on_conflict=user_id,date\b/);
+});
+
+test('push does not send user_id in the body', async () => {
+  /* The whole reason the conflict target has to be named in the URL: the
+     client has no business asserting whose row this is, and the column
+     defaults to auth.uid(). If a body ever gained a user_id key this would
+     silently reintroduce the thing on_conflict exists to avoid trusting. */
+  let body;
+  const fetchImpl = async (_url, opts) => { body = JSON.parse(opts.body); return { ok: true, status: 200 }; };
+  await push({ '2026-08-20': { s: 1 } }, ['2026-08-20'],
+    { fetchImpl, getToken: async () => 'AT' });
+  assert.equal('user_id' in body[0], false);
+});
+
 test('a 401 refreshes the token once and retries', async () => {
   /* The failure most likely to reach a real user: the app is open past the
      hour, the token dies, and the next tick must not be lost. */

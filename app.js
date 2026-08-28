@@ -672,8 +672,15 @@ function startApp() {
   const uid = currentUserId();
   migrateLegacy(uid);
   setNamespace(uid);
-  profileDoc = loadDoc('profile');
-  profile = normalizeProfile(profileDoc?.value);
+  /* Normalise BEFORE the envelope is rebuilt, not after — see the identical
+     reasoning at the initSync fix above. profileDoc is both what gets written
+     back to localStorage and the body of the next push, so an unnormalised
+     value read from storage (an older app version, a hand-edited key) must
+     never reach it. loadDoc's null must survive unchanged: it is how the
+     onboarding wizard tells "never set up" from "set up, empty" apart. */
+  const loadedProfile = loadDoc('profile');
+  profile = normalizeProfile(loadedProfile?.value);
+  profileDoc = loadedProfile ? { value: profile, u: loadedProfile.u } : null;
   DAY_KEYS.forEach(renderDay);
   renderNow();
   showDay(istNow().dayKey);
