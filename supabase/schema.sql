@@ -38,21 +38,33 @@ alter table daily_progress alter column user_id set default auth.uid();
 -- Under v2 it means two users cannot both hold a row for the same date —
 -- the modal case, since everybody ticks today. Widen it to (user_id, date).
 -- user_id is already `not null` above, so it needs no redundant not-null
--- here. Every existing row belongs to a single owner, so this widen cannot
--- collide on a duplicate (user_id, date) pair — there is only one user_id
--- value in the table before Task 7 migrates any rows.
+-- here. The widen is safe by construction, not merely by the data happening
+-- to cooperate: the existing PK already makes `date` alone unique, so
+-- `(user_id, date)` is unique for any user_id distribution whatsoever — it
+-- cannot find a duplicate pair to violate. That holds before Task 7's
+-- migration and after it, since the migration rewrites user_id values on
+-- existing rows without adding new ones, so it cannot create a duplicate
+-- pair either.
 --
--- MUST be applied before Task 7 migrates the owner's rows onto their new
--- account, and PostgREST's schema cache MUST be reloaded afterwards — the
--- PostgREST docs call out a primary-key change by name as required for
--- upsert to keep working.
+-- MUST still be applied before Task 7 migrates the owner's rows onto their
+-- new account — not because the widen itself is unsafe, but because the
+-- collision this whole change fixes is a *second signed-up user ticking
+-- today* under the old narrow key, and that can happen the moment a second
+-- account exists. PostgREST's schema cache MUST also be reloaded afterwards
+-- (see the `notify pgrst` statement below) — the PostgREST docs call out a
+-- primary-key change by name as required for upsert to keep working.
 --
 -- Guarded for re-runnability like the rest of this section, but a plain
 -- `if exists`/name check does not work here: Postgres names the primary key
 -- constraint `daily_progress_pkey` regardless of which columns are in it, so
 -- the name is identical before and after this statement has run. The guard
 -- instead asks whether user_id is already a member of the primary key — true
--- only once this has already been applied.
+-- only once this has already been applied. The join also pins kcu.table_name
+-- to the same table: constraint names are unique per table, not per schema,
+-- and key_column_usage also carries foreign-key columns, which reserve no
+-- name of their own — without pinning the table, an unrelated FK elsewhere
+-- in `public` that happened to reuse the name `daily_progress_pkey` on a
+-- user_id column could satisfy this check and silently skip the widen.
 do $$
 begin
   if not exists (
@@ -61,6 +73,7 @@ begin
     join information_schema.key_column_usage kcu
       on kcu.constraint_name = tc.constraint_name
      and kcu.table_schema = tc.table_schema
+     and kcu.table_name = tc.table_name
     where tc.table_schema = 'public'
       and tc.table_name = 'daily_progress'
       and tc.constraint_type = 'PRIMARY KEY'
@@ -70,6 +83,13 @@ begin
     alter table daily_progress add primary key (user_id, date);
   end if;
 end $$;
+
+-- Required after the primary-key change above, or upsert misbehaves
+-- regardless of anything in the client — PostgREST docs: "After creating a
+-- table or changing its primary key, you must refresh PostgREST schema
+-- cache for upsert to work properly." Issued unconditionally: it is cheap
+-- and idempotent whether or not the guard above actually ran anything.
+notify pgrst, 'reload schema';
 
 drop policy if exists own_rows on daily_progress;
 create policy own_rows on daily_progress
