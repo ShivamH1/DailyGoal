@@ -7,12 +7,20 @@ import { clearableDates, computeStreak, growthVals, mergeProgress, toCSV, weekly
 import { pull, push, isConfigured, isAuthError, pullDoc, pushDoc } from './sync.js';
 import { defaultProfile, normalizeProfile, mergeDoc } from './profile.js';
 import { mountProfileEditor } from './profileEditor.js';
-import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from './schedule.js';
+import { DAY_KEYS, istDateISO, istNow, resolveNow, emptyWeek } from './schedule.js';
 import { nextDeadline, formatDates } from './deadlines.js';
 import {
   isAuthConfigured, loadSession, completeSignIn, beginSignIn, signOut,
   stripAuthParams, authView, currentUserId,
 } from './auth.js';
+
+/* schedule.js no longer owns a week (Task 17) — it now takes one as data.
+   This app has nowhere yet to get the user's real week from, so it renders
+   an empty one rather than leaving WEEK undefined, which would stop this
+   module from loading at all. Task 18 replaces this with a stored document
+   and rewires resolveNow's call sites to its new (week, dayKey, minutes)
+   signature. */
+const WEEK = emptyWeek();
 
 /* ---------- day panels ---------- */
 /* The design's time column: 96px, right-aligned, and a '6:45 – 7:45' range
