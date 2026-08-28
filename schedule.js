@@ -67,21 +67,57 @@ export function resolveNow(week, dayKey, minutes) {
   return null;                     /* nothing planned anywhere */
 }
 
+/* True for {} and Object.create(null), false for arrays, Dates, RegExps,
+   Maps, functions and the rest of the built-in zoo. A week (and each day
+   inside it) has to be plain data, not merely "typeof === 'object'" — a
+   Date has that too, and is not a sensible week. Everything this module is
+   ever handed comes from JSON, which can produce arrays, primitives and
+   plain objects and nothing else, so this is the exact boundary a legitimate
+   value can never fail. */
+const isPlainObject = (v) =>
+  v !== null && typeof v === 'object' && Object.prototype.toString.call(v) === '[object Object]';
+
 export function validateWeek(week, laneKeys) {
-  const lanes = new Set(laneKeys || []);
+  /* laneKeys must be an array of lane KEY STRINGS, e.g. ['focus', 'rest'] —
+     not profile.lanes itself. profile.js defines lanes as {key, name}
+     objects, and a Set built from those objects will never match a block's
+     lane string, so every block in an otherwise-valid week would report as
+     an unknown lane. The caller is responsible for mapping:
+     profile.lanes.map((l) => l.key). This function deliberately does not
+     also accept the {key, name} shape — silently tolerating it would hide
+     that caller mistake instead of surfacing it. */
+  const lanes = new Set(Array.isArray(laneKeys) ? laneKeys : []);
   const errors = [];
+
+  if (!isPlainObject(week)) {
+    errors.push('week must be an object');
+    return { ok: false, errors };
+  }
+
   for (const key of DAY_KEYS) {
-    const blocks = week?.[key]?.blocks;
-    if (blocks === undefined) continue;
+    const daySlot = week[key];
+    if (daySlot === undefined) continue;                    /* day not supplied */
+    if (!isPlainObject(daySlot)) { errors.push(`${key}: day must be an object`); continue; }
+    const blocks = daySlot.blocks;
+    if (blocks === undefined) continue;                     /* day supplied, no blocks yet */
     if (!Array.isArray(blocks)) { errors.push(`${key}: blocks is not a list`); continue; }
-    let prevEnd = -1;
+    let prevStart = null, prevEnd = -1;
     blocks.forEach((b, i) => {
       const at = `${key}[${i}]`;
       if (!Number.isInteger(b?.start) || !Number.isInteger(b?.end)) errors.push(`${at}: start and end must be whole minutes`);
       else {
         if (b.start < 0 || b.end > 1440) errors.push(`${at}: outside the day`);
         if (b.end <= b.start) errors.push(`${at}: ends before it starts`);
-        if (b.start < prevEnd) errors.push(`${at}: overlaps the previous block`);
+        if (prevStart !== null && b.start < prevEnd) {
+          /* b.start < prevEnd alone conflates two different problems: a
+             block that truly overlaps the previous one in time, and a block
+             that is merely out of order in the list (5pm then 2pm) but never
+             overlaps it. Only call it an overlap when the intervals actually
+             intersect — this message should not say something that isn't so. */
+          const overlaps = b.end > prevStart;
+          errors.push(`${at}: ${overlaps ? 'overlaps the previous block' : 'is out of order relative to the previous block'}`);
+        }
+        prevStart = b.start;
         prevEnd = b.end;
       }
       if (!String(b?.label || '').trim()) errors.push(`${at}: needs a label`);

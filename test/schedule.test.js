@@ -15,6 +15,11 @@ const WEEK = {
     { start: 1155, end: 1215, label: 'Workout', lane: 'move' },
   ]),
   fri: day([{ start: 390, end: 405, label: 'Wake up', lane: 'rest' }]),
+  /* Deliberately placed one day after fri: from fri, walking forward finds
+     sat immediately and walking backward finds thu immediately, so the two
+     directions land on different, distinguishable days. Without this, fri
+     could not tell a forward search from a backward one. */
+  sat: day([{ start: 1000, end: 1040, label: 'Lunch', lane: 'rest' }]),
 };
 
 test('minutesToLabel keeps the twelve-hour, no-meridiem style already on the page', () => {
@@ -53,6 +58,16 @@ test('a gap reports the next block rather than nothing', () => {
   assert.equal(r.block.start, 1155);
 });
 
+test('before the first block of the day it reports that block as next', () => {
+  /* Distinguishes "find the first upcoming block" from "find any upcoming
+     block" — a find-from-index-1 or a filter-then-take-the-last mutant both
+     still pass the gap test above, because that one asks for block index 2,
+     not index 0. */
+  const r = resolveNow(WEEK, 'thu', 60);
+  assert.equal(r.state, 'next');
+  assert.equal(r.block.start, 405);
+});
+
 test('after the last block it rolls into the following day', () => {
   const r = resolveNow(WEEK, 'thu', 1430);
   assert.equal(r.state, 'next');
@@ -63,11 +78,24 @@ test('after the last block it rolls into the following day', () => {
 test('it skips over empty days rather than stopping at the first one', () => {
   /* New and load-bearing: a user may well plan four days and leave three
      blank. The old implementation looked exactly one day ahead, so an empty
-     tomorrow produced a crash rather than a Wednesday. */
-  const r = resolveNow(WEEK, 'fri', 1439);
+     tomorrow produced a crash rather than a Wednesday. Starts from sat, not
+     fri, so the walk crosses four blank days (sun, mon, tue, wed) rather
+     than reaching the now-populated sat in one step. */
+  const r = resolveNow(WEEK, 'sat', 1439);
   assert.equal(r.state, 'next');
   assert.equal(r.dayKey, 'thu');
   assert.equal(r.block.start, 405);
+});
+
+test('the walk to find "next" moves forward through the week, never backward', () => {
+  /* From fri, forward reaches sat in one step; backward would reach thu in
+     one step. The two answers differ only because sat now carries a block —
+     without it, both directions could land on the same day by coincidence
+     and this mutation would go undetected. */
+  const r = resolveNow(WEEK, 'fri', 1439);
+  assert.equal(r.state, 'next');
+  assert.equal(r.dayKey, 'sat');
+  assert.equal(r.block.start, 1000);
 });
 
 test('an entirely empty week resolves to null instead of looping forever', () => {
@@ -76,6 +104,15 @@ test('an entirely empty week resolves to null instead of looping forever', () =>
 
 test('resolveNow tolerates a day key the week does not define', () => {
   assert.equal(resolveNow({}, 'mon', 600), null);
+});
+
+test('emptyWeek gives every day its own blocks array, not one shared reference', () => {
+  /* A refactor that hoists the day literal out of the map would make every
+     day alias the same object — editing Monday would silently edit Tuesday
+     too, invisibly, because nothing else re-reads the constant. */
+  const w = emptyWeek();
+  w.mon.blocks.push({ start: 0, end: 10, label: 'x', lane: 'rest' });
+  assert.equal(w.tue.blocks.length, 0);
 });
 
 test('istNow reads Kolkata time regardless of process timezone', () => {
@@ -137,6 +174,54 @@ test('validateWeek rejects a lane the profile does not define', () => {
 test('validateWeek rejects a block with no label', () => {
   const w = { ...emptyWeek(), mon: day([{ start: 0, end: 60, label: '  ', lane: 'rest' }]) };
   assert.equal(validateWeek(w, LANES).ok, false);
+});
+
+test('validateWeek rejects a start or end that is not a whole number of minutes', () => {
+  /* '9:30' as a start is precisely what a generative source emits when it
+     forgets the minutes-from-midnight convention. Without this guard, the
+     numeric comparisons below it silently no-op on NaN and the block passes. */
+  const w = { ...emptyWeek(), mon: day([{ start: '9:30', end: 600, label: 'x', lane: 'rest' }]) };
+  assert.equal(validateWeek(w, LANES).ok, false);
+  assert.match(validateWeek(w, LANES).errors[0], /whole minutes/);
+});
+
+test('validateWeek does not call a merely out-of-order, non-overlapping pair an "overlap"', () => {
+  /* 500-600 then 100-200: listed out of order, but the two spans never
+     intersect. The verdict (reject) is correct either way; the wording is
+     not, if it says "overlap" for two blocks that never touch in time. */
+  const w = { ...emptyWeek(), mon: day([
+    { start: 500, end: 600, label: 'a', lane: 'rest' },
+    { start: 100, end: 200, label: 'b', lane: 'rest' },
+  ]) };
+  const { ok, errors } = validateWeek(w, LANES);
+  assert.equal(ok, false);
+  assert.doesNotMatch(errors.join(' | '), /overlap/i);
+});
+
+test('validateWeek never throws when laneKeys is not an array', () => {
+  /* new Set(x) throws on any non-iterable x, and the only real caller of
+     this function passes profile.lanes.map(...) — a computation that can
+     fail upstream and hand this function something other than an array.
+     A trust boundary that throws on bad input is not a trust boundary. */
+  const w = emptyWeek();
+  for (const bad of [null, undefined, {}, 5, () => {}]) {
+    assert.doesNotThrow(() => validateWeek(w, bad));
+  }
+});
+
+test('validateWeek rejects a week that is not a plain object', () => {
+  for (const bad of [null, undefined, 'mon', 42, [1, 2, 3], () => {}, new Date()]) {
+    const { ok, errors } = validateWeek(bad, LANES);
+    assert.equal(ok, false, `expected reject for ${String(bad)}`);
+    assert.ok(errors.length >= 1);
+  }
+});
+
+test('validateWeek rejects a day that is present but not an object', () => {
+  for (const bad of [null, 'monday', 42, [1, 2, 3], () => {}]) {
+    const w = { ...emptyWeek(), mon: bad };
+    assert.equal(validateWeek(w, LANES).ok, false, `expected reject for mon = ${String(bad)}`);
+  }
 });
 
 test('validateWeek reports every problem, not just the first', () => {
