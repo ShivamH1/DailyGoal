@@ -137,6 +137,19 @@
      information depends on the colour. */
   --lane-rest:var(--color-neutral-400);                 /* 1.50 — decorative */
 
+  /* Lane keys are user data (profile.lanes) as of Task 15, and a fixed
+     schedule (schedule.js) besides — neither is a closed set the stylesheet
+     can enumerate one selector per key for. These five positional aliases
+     are the same five values above, just named by rotation slot instead of
+     by key, so both the legend (by nth-child position) and the schedule rows
+     (by an inline --lane-i set from app.js's LANE_ORDER) can select a colour
+     without this file ever naming 'study' or 'cricket'. */
+  --lane-pos-1:var(--lane-study);
+  --lane-pos-2:var(--lane-work);
+  --lane-pos-3:var(--lane-fit);
+  --lane-pos-4:var(--lane-cricket);
+  --lane-pos-5:var(--lane-rest);
+
   /* Growth dots.  A live dot is the data, so it owes 3.0: --color-accent is
      2.69, accent-600 is 3.35.
      The idle dot is the user's other call.  The design made a missed day
@@ -412,11 +425,14 @@ svg{display:block}
   margin-bottom:var(--space-4);font-size:12.5px;color:var(--text-muted)}
 .legend span{display:inline-flex;align-items:center;gap:7px}
 .legend i{width:9px;height:9px;flex:none;border-radius:50%;display:block}
-.d-study{background:var(--lane-study)}
-.d-work{background:var(--lane-work)}
-.d-fit{background:var(--lane-fit)}
-.d-cricket{background:var(--lane-cricket)}
-.d-rest{background:var(--lane-rest)}
+/* Position-based, not key-based: lane keys are user data, so the stylesheet
+   can no longer name one class per key. The 5th, 10th, 15th... legend entry
+   shares the 1st's colour, same as the 6th day of a 5-day rotation would. */
+.legend span:nth-child(5n+1) i{background:var(--lane-pos-1)}
+.legend span:nth-child(5n+2) i{background:var(--lane-pos-2)}
+.legend span:nth-child(5n+3) i{background:var(--lane-pos-3)}
+.legend span:nth-child(5n+4) i{background:var(--lane-pos-4)}
+.legend span:nth-child(5n+5) i{background:var(--lane-pos-5)}
 
 .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:22px}
 .tab{border:1px solid var(--color-divider);background:transparent;color:var(--color-text);
@@ -450,16 +466,11 @@ svg{display:block}
 .row .when span{display:block;white-space:nowrap}
 .row .body{min-width:0;display:flex;gap:var(--space-3);align-items:flex-start}
 .lane-dot{width:9px;height:9px;flex:none;border-radius:50%;margin-top:8px;
-  background:var(--lane,transparent)}
+  background:var(--lane-i, var(--lane-pos-5))}
 .row .what{min-width:0}
 .row .what strong{font-weight:600;font-size:15.5px;display:inline}
 .row .what em{display:block;font-style:normal;margin-top:var(--space-1);
   font-size:13.5px;color:var(--text-muted)}
-.row.lane-study{--lane:var(--lane-study)}
-.row.lane-work{--lane:var(--lane-work)}
-.row.lane-fit{--lane:var(--lane-fit)}
-.row.lane-cricket{--lane:var(--lane-cricket)}
-.row.lane-rest{--lane:var(--lane-rest)}
 
 /* Pills inside a row.  Declared after the row so a state colour settles the
    tie by source order rather than by extra specificity. */

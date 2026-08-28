@@ -31,7 +31,7 @@
            the aria-live region, and renderNow still only touches it when the
            sentence itself changes. -->
       <div class="now-pill" id="nowBanner" aria-live="polite"></div>
-      <p class="season">Season 2026 · Pune</p>
+      <p class="season" id="seasonLine"></p>
     </header>
 
     <!-- Shown when signed out. The app itself is hidden rather than
@@ -75,18 +75,18 @@
           <div class="ticks">
             <button class="tick" id="t-s" type="button" aria-pressed="false">
               <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12.6 9.4 18 20 6.6"/></svg></span>
-              <span class="lbl">Study hour</span>
-              <span class="hint">6:45 am</span>
+              <span class="lbl"></span>
+              <span class="hint"></span>
             </button>
             <button class="tick" id="t-w" type="button" aria-pressed="false">
               <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12.6 9.4 18 20 6.6"/></svg></span>
-              <span class="lbl">Workout</span>
-              <span class="hint">7:15 pm</span>
+              <span class="lbl"></span>
+              <span class="hint"></span>
             </button>
             <button class="tick" id="t-z" type="button" aria-pressed="false">
               <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12.6 9.4 18 20 6.6"/></svg></span>
-              <span class="lbl">Sleep by 11</span>
-              <span class="hint">11:00 pm</span>
+              <span class="lbl"></span>
+              <span class="hint"></span>
             </button>
           </div>
 
@@ -132,13 +132,7 @@
       <section class="shape" aria-label="The week’s shape">
         <h2>The week’s shape</h2>
 
-        <div class="legend">
-          <span><i class="d-study"></i>Study</span>
-          <span><i class="d-work"></i>Work</span>
-          <span><i class="d-fit"></i>Workout</span>
-          <span><i class="d-cricket"></i>Cricket</span>
-          <span><i class="d-rest"></i>Rest</span>
-        </div>
+        <div class="legend" id="legendList"></div>
 
         <!-- Buttons, not an ARIA tab widget. role=tab/tablist/tabpanel was
              declared with no aria-controls, no aria-labelledby and no arrow-key
@@ -166,44 +160,13 @@
       <!-- 5 · GROUND RULES -->
       <section class="rules-sec" aria-label="Ground rules">
         <h2>Ground rules</h2>
-        <div class="rules">
-          <div class="rule">
-            <span class="rule-n" aria-hidden="true">1</span>
-            <b>One subject per morning</b>
-            <p>Maths Tue, ML Wed, DL Thu, Stats Fri. Depth beats juggling — and the order follows the dependency chain: maths feeds ML, ML feeds DL.</p>
-          </div>
-          <div class="rule">
-            <span class="rule-n" aria-hidden="true">2</span>
-            <b>Intensity waves, not flat effort</b>
-            <p>Hard Mon &amp; Thu (home workouts), easy Tue &amp; Fri (walks), moderate Wed (run). Daily movement works only because the effort rises and falls.</p>
-          </div>
-          <div class="rule">
-            <span class="rule-n" aria-hidden="true">3</span>
-            <b>Friday tapers into the weekend</b>
-            <p>Walk and stretch on Friday, matches Sat–Sun. Eight hours of cricket is the real training load — the week is built around it.</p>
-          </div>
-          <div class="rule">
-            <span class="rule-n" aria-hidden="true">4</span>
-            <b>Mornings are for the hard subjects</b>
-            <p>One fresh hour at 6:45 beats three exhausted hours at 10 PM. AI &amp; ML is cumulative — the maths must be understood, not memorised.</p>
-          </div>
-          <div class="rule">
-            <span class="rule-n" aria-hidden="true">5</span>
-            <b>Never miss twice</b>
-            <p>Missing one day is a rain delay, not a lost season. Don&rsquo;t break the chain — but if you do, never let it happen two days running. That single rule protects every streak.</p>
-          </div>
-          <div class="rule">
-            <span class="rule-n" aria-hidden="true">6</span>
-            <b>Sleep is the umpire</b>
-            <p>7.5 hours, non-negotiable. If soreness lingers past two days or match performance dips, swap a hard day for a walk — don&rsquo;t drop the habit.</p>
-          </div>
-        </div>
+        <div class="rules" id="rulesList"></div>
       </section>
 
     </main>
 
     <footer>
-      <p>The Weekly Innings · Season 2026 · Pune</p>
+      <p id="footerLine">Weekly Innings</p>
       <!-- Outside <main>, so hiding <main> does not hide these. The bar as a
            whole is gated instead: exporting an empty progress object while
            signed out reads as "my data is gone". -->

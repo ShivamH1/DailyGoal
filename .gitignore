@@ -5,3 +5,4 @@ node_modules/
 dist/
 .vercel/
 config.js
+seed-profile.json

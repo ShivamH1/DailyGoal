@@ -26,8 +26,13 @@ function whenCell(time) {
 /* The legend's own words, so the dot's accessible name and the legend agree.
    The lane dot is now a soft neutral-400 by the user's decision, which is
    below the 3:1 graphics floor on purpose — so the lane must not be carried
-   by colour alone. Every dot names its lane in text. */
+   by colour alone. Every dot names its lane in text. schedule.js's own five
+   lane keys, in the stylesheet's original colour order — this list is what
+   turns a lane key into a rotation position now that the stylesheet no
+   longer names any key directly (see styles.css's --lane-pos-N and .legend
+   nth-child rules, the same position-based scheme). */
 const LANE_LABELS = { study: 'Study', work: 'Work', fit: 'Workout', cricket: 'Cricket', rest: 'Rest' };
+const LANE_ORDER = ['study', 'work', 'fit', 'cricket', 'rest'];
 
 /* Time first, then the block: the design's row is a 96px right-aligned time
    column beside a body that opens with the lane dot. The lane is a dot now,
@@ -38,9 +43,16 @@ function rowHTML(dayKey, block, i) {
     ? `<span class="effort${block.effort.cls ? ' ' + block.effort.cls : ''}">${block.effort.text}</span>`
     : '';
   const detail = block.detail ? `<em>${block.detail}</em>` : '';
-  return `<div class="row lane-${block.lane}" data-day="${dayKey}" data-i="${i}">` +
+  /* --lane-i is set to a var() reference, not a bare number: styles.css can
+     then just consume it as a colour with no per-key selector, which is the
+     whole point — one lane's key never has to be enumerated in the
+     stylesheet. Position in LANE_ORDER, not the key spelling, decides which
+     of the five rotation colours a lane gets. */
+  const laneIdx = LANE_ORDER.indexOf(block.lane);
+  const laneVar = laneIdx === -1 ? 'var(--lane-pos-5)' : `var(--lane-pos-${laneIdx + 1})`;
+  return `<div class="row" data-day="${dayKey}" data-i="${i}">` +
          whenCell(block.time) +
-         `<div class="body"><span class="lane-dot" role="img" ` +
+         `<div class="body"><span class="lane-dot" role="img" style="--lane-i:${laneVar}" ` +
          `aria-label="${LANE_LABELS[block.lane] || block.lane}" ` +
          `title="${LANE_LABELS[block.lane] || block.lane}"></span>` +
          `<div class="what"><strong>${block.label}${subj}${eff}</strong>${detail}</div>` +
@@ -146,10 +158,65 @@ function commit(dates) {
 }
 
 /* The re-render hook called after the profile is committed and after it is
-   pulled from the server. Deadlines are profile-derived state, so they must
-   refresh here — Task 15 grows this further to render the season line,
-   ground rules, legend and tick labels. */
+   pulled from the server. Everything here is user-authored, so everything
+   here is textContent. The only innerHTML left on this page is our own
+   markup with our own entities. */
 function renderProfile() {
+  document.getElementById('seasonLine').textContent = profile.season;
+  document.getElementById('footerLine').textContent =
+    profile.season ? `Weekly Innings · ${profile.season}` : 'Weekly Innings';
+
+  const rules = document.getElementById('rulesList');
+  rules.textContent = '';
+  if (!profile.rules.length) {
+    const p = document.createElement('p');
+    p.className = 'rules-empty';
+    p.textContent = 'No ground rules yet. Add the handful of principles you actually want to hold yourself to.';
+    rules.appendChild(p);
+  } else {
+    profile.rules.forEach((r, i) => {
+      const el = document.createElement('div');
+      el.className = 'rule';
+      const n = document.createElement('span');
+      n.className = 'rule-n';
+      n.setAttribute('aria-hidden', 'true');
+      n.textContent = String(i + 1);
+      const b = document.createElement('b');
+      b.textContent = r.title;
+      const p = document.createElement('p');
+      p.textContent = r.body;
+      el.append(n, b, p);
+      rules.appendChild(el);
+    });
+  }
+
+  const legend = document.getElementById('legendList');
+  legend.textContent = '';
+  /* No d-${lane.key} class: lane keys are user data now, so styles.css can no
+     longer enumerate one selector per key. The dot's colour comes from its
+     position among these spans (styles.css's .legend span:nth-child rule on
+     the same 5-colour rotation used by the schedule rows), and its name
+     still rides along as the adjacent text node — colour is never the only
+     way a lane is identified. */
+  for (const lane of profile.lanes) {
+    const span = document.createElement('span');
+    const dot = document.createElement('i');
+    span.append(dot, document.createTextNode(lane.name));
+    legend.appendChild(span);
+  }
+
+  for (const t of profile.ticks) {
+    const btn = document.getElementById(`t-${t.key}`);
+    if (!btn) continue;                       /* extras are built in Task 16 */
+    btn.querySelector('.lbl').textContent = t.label;
+    btn.querySelector('.hint').textContent = t.hint;
+  }
+
+  /* Deadlines are profile-derived state too — a profile pulled from another
+     device (initSync) or just committed (commitProfile) must refresh the
+     countdown here, not wait for the caller to remember a second call. Before
+     this call existed, a profile pulled from another device left the
+     countdown stale until reload. */
   renderDeadline();
 }
 
@@ -523,15 +590,31 @@ function renderDeadline() {
 function renderWeek() {
   const start = weekStart(todayISO());
   const sum = weeklySummary(progress, start);
-  /* The design gives each of the four its own numeral colour, so the class
+  /* The first three captions are profile.ticks[].label now, not hardcoded
+     English — CORE_TICK_KEYS (s, w, z) always sorts first in profile.ticks,
+     so these three indices are the core ticks in the same order the streak
+     itself uses. Every denominator is 7: the old '/5' baked in a five-day
+     study week that is one person's schedule, not a rule. The caption is
+     user-authored, so this is built with textContent, not innerHTML — the
+     design still gives each of the four its own numeral colour, so the class
      rides along with the value. */
-  document.getElementById('weekStats').innerHTML = [
-    [`${sum.study}/5`, 'Study days', ''],
-    [`${sum.workout}/7`, 'Workouts', ' s-fit'],
-    [`${sum.sleep}/7`, 'Slept by 11', ' s-sleep'],
+  const weekStats = document.getElementById('weekStats');
+  weekStats.textContent = '';
+  [
+    [`${sum.study}/7`, profile.ticks[0].label, ''],
+    [`${sum.workout}/7`, profile.ticks[1].label, ' s-fit'],
+    [`${sum.sleep}/7`, profile.ticks[2].label, ' s-sleep'],
     [sum.bestStreak, 'Best run', ''],
-  ].map(([n, cap, cls]) =>
-    `<div class="week-stat${cls}"><b>${n}</b><span>${cap}</span></div>`).join('');
+  ].forEach(([n, cap, cls]) => {
+    const div = document.createElement('div');
+    div.className = `week-stat${cls}`;
+    const b = document.createElement('b');
+    b.textContent = n;
+    const span = document.createElement('span');
+    span.textContent = cap;
+    div.append(b, span);
+    weekStats.appendChild(div);
+  });
 
   /* The note is the one string on this page the user (or, given the no-auth
      design, anyone with the URL and the anon key) authors. Through innerHTML
