@@ -463,3 +463,37 @@ test('a getLaneUsage that returns an Array instead of a Set fails loudly rather 
   const status = findAll(workRow, (el) => el.className === 'pf-lane-status')[0];
   assert.match(status.textContent, /not saved/i, 'the row must say something rather than leave a dead button');
 });
+
+/* ---------- fix round 4 ---------- */
+
+test('a PRESENT getLaneUsage that returns null is refused loudly and does not delete the lane', () => {
+  /* Distinct from the omitted-function case above: this getLaneUsage IS
+     supplied, so the destructure default never runs. No correct
+     implementation of (laneKey) => Set<dayName> ever returns null — a
+     present function returning it (e.g. from a bug like an undefined
+     schedule variable at cold open) is exactly as capable of meaning "the
+     schedule this lane is used by never loaded" as "not used", so it must
+     be refused the same way a wrong container is, not treated as a
+     friendlier spelling of "no usage". */
+  let changed = null;
+  const profile = defaultProfile();
+  const root = makeRoot();
+  mountProfileEditor({ root, getProfile: () => profile, getLaneUsage: () => null, onChange: (p) => { changed = p; } });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  const laneRows = findAll(root, (el) => el.className === 'pf-lane-row');
+  assert.throws(() => buttonsNamed(laneRows[1], 'Delete')[0].dispatch('click'));
+  assert.equal(changed, null, 'onChange must never fire when the usage answer cannot be trusted');
+});
+
+test('a PRESENT getLaneUsage that returns undefined is refused loudly and does not delete the lane', () => {
+  let changed = null;
+  const profile = defaultProfile();
+  const root = makeRoot();
+  mountProfileEditor({ root, getProfile: () => profile, getLaneUsage: () => undefined, onChange: (p) => { changed = p; } });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  const laneRows = findAll(root, (el) => el.className === 'pf-lane-row');
+  assert.throws(() => buttonsNamed(laneRows[1], 'Delete')[0].dispatch('click'));
+  assert.equal(changed, null, 'onChange must never fire when the usage answer cannot be trusted');
+});

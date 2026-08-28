@@ -75,7 +75,18 @@ const PROBE_LANE_KEY = { toString: () => '(profileEditor internal probe — must
    worse. Coercing an Array into "must mean a Set of the same values" would
    paper over exactly the mis-wired call site this exists to surface, so it
    is refused outright instead — the caller's contract is wrong and belongs
-   fixed at the call site, not guessed at here. */
+   fixed at the call site, not guessed at here.
+
+   null and undefined are refused for the same reason, not treated as a
+   friendlier "no usage" spelling: no CORRECT implementation of this
+   contract ever returns them — the destructure default returns a Set,
+   app.js returns a Set, and the plan's real schedule-backed closure returns
+   a Set. A present function that returns null (say, from a bug like an
+   undefined schedule variable at cold open) is exactly as capable of
+   meaning "the schedule this lane is actually used by never loaded" as it
+   is of meaning "not used" — tolerating it would fail open in the same
+   direction the Array case exists to close, just spelled with a falsier
+   value instead of a wrong container. */
 function assertIsLaneUsageSet(value, where) {
   if (!(value instanceof Set)) {
     const shape = value === null ? 'null' : Array.isArray(value) ? 'an Array' : typeof value;
