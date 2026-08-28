@@ -144,6 +144,32 @@ test('a date missing from the current progress is handled without throwing', () 
   assert.deepEqual(clearableDates(['2026-08-20'], [undefined], { '2026-08-20': { u: 'z' } }), []);
 });
 
+test('toCSV includes a column per extra tick, in profile order', () => {
+  /* Export is the escape hatch. A tick the user invented is exactly the kind
+     of data that must not be silently dropped on the way out. */
+  const progress = {
+    '2026-08-20': { s: 1, w: 1, z: 0, note: 'SVMs', u: 'T', x: { k1: 1 } },
+    '2026-08-21': { s: 1, w: 0, z: 1, u: 'T2' },
+  };
+  const csv = toCSV(progress, [{ key: 'k1', label: 'Read' }]);
+  const [head, ...rows] = csv.trim().split('\n');
+  assert.equal(head, 'date,study,workout,sleep,Read,note,updated_at');
+  assert.match(rows[0], /^2026-08-20,1,1,0,1,SVMs,T$/);
+  assert.match(rows[1], /^2026-08-21,1,0,1,0,,T2$/);
+});
+
+test('toCSV without extras is byte-identical to the old format', () => {
+  /* Anyone with an existing exported file, or a spreadsheet built on it,
+     must not have their columns move. */
+  const csv = toCSV({ '2026-08-20': { s: 1, w: 1, z: 0, note: 'x', u: 'T' } });
+  assert.equal(csv, 'date,study,workout,sleep,note,updated_at\n2026-08-20,1,1,0,x,T\n');
+});
+
+test('an extra tick label containing a comma is quoted', () => {
+  const csv = toCSV({}, [{ key: 'k1', label: 'Read, daily' }]);
+  assert.match(csv.split('\n')[0], /"Read, daily"/);
+});
+
 test('CSV quotes a note containing a newline', () => {
   /* csvField tests for /[",\n]/ but only the quote and the comma were ever
      asserted. An unquoted newline ends the row early and shifts every column

@@ -523,6 +523,56 @@ footer p{margin:0;font-size:12.5px;color:var(--text-muted)}
   color:var(--fill-strong-ink)}                         /* 5.72 */
 #exportCsv:hover{background:var(--fill-strong-hover)}   /* 8.72 */
 
+/* The <span> wrapper only exists so mountProfileEditor() has somewhere of
+   its own to mount into — display:contents drops its box so the "Edit
+   profile" button sits in the same row as sign-out and export, not indented
+   inside an extra element. The <dialog> it also mounts here is display:none
+   by the UA stylesheet until shown, so it never affects this row's layout. */
+#profileEditorRoot{display:contents}
+.profile-edit-btn{border:1px solid var(--color-divider);background:transparent;
+  color:var(--color-text)}
+.profile-edit-btn:hover{background:var(--color-neutral-200)}
+
+/* 4.8 Profile editor -------------------------------------------------------
+   The one dialog on the page. Every label and value inside it is either our
+   own static copy (this file may style it freely) or reflects something the
+   user typed into profileEditor.js, which is why that module never puts any
+   of it in through innerHTML. */
+.profile-dialog{width:min(560px,92vw);max-height:85vh;overflow-y:auto;
+  margin:auto;padding:var(--space-6);border:none;border-radius:var(--radius-card);
+  background:var(--color-bg);box-shadow:var(--shadow-lg)}
+.profile-dialog::backdrop{background:rgba(32,30,29,.45)}
+.profile-dialog h2{font-size:22px;margin-bottom:var(--space-4)}
+.profile-dialog h3{font-size:13px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--color-accent-700);margin:var(--space-6) 0 var(--space-3)}
+.profile-dialog section:first-of-type h3{margin-top:0}
+.profile-dialog input{width:100%;padding:9px 14px;font-size:14px;
+  color:var(--color-text);background:var(--color-surface);
+  border:1px solid var(--edge);border-radius:var(--radius-sm)}
+.profile-dialog input::placeholder{color:var(--text-muted)}
+.profile-dialog button{border:1px solid var(--color-divider);background:transparent;
+  color:var(--color-text);border-radius:var(--radius-pill);
+  padding:6px 14px;font-size:12.5px;white-space:nowrap}
+.profile-dialog button:hover{background:var(--color-neutral-200)}
+.profile-dialog button:disabled{opacity:.4;cursor:default}
+.profile-dialog button:disabled:hover{background:transparent}
+.profile-close-btn{display:block;margin:var(--space-6) 0 0 auto;
+  border-color:transparent;background:var(--fill-strong);color:var(--fill-strong-ink)}
+.profile-close-btn:hover{background:var(--fill-strong-hover)}
+
+.pf-field{display:block;margin-bottom:var(--space-2)}
+.pf-field span{display:block;font-size:12px;margin-bottom:5px;color:var(--text-muted)}
+
+.pf-rule-row,.pf-deadline-row,.pf-lane-row,.pf-tick-row{
+  display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);
+  padding:var(--space-2) 0;border-top:1px solid var(--color-divider)}
+.pf-rule-row input,.pf-deadline-row>input,.pf-lane-row input,.pf-tick-row input{
+  flex:1 1 140px;min-width:0}
+.pf-dates{display:flex;flex-wrap:wrap;gap:var(--space-2);flex:1 1 100%}
+.pf-dates span{display:flex;align-items:center;gap:5px}
+.pf-dates input{width:auto;flex:none}
+.pf-lane-status{font-size:12px;color:var(--warn);flex:1 1 100%}
+
 /* --- 5 · Response -------------------------------------------------------- */
 /* The design exposes a `stack` prop for the hero; this is that, on a query. */
 @media (max-width:840px){

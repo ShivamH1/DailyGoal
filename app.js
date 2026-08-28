@@ -6,6 +6,7 @@ import {
 import { clearableDates, computeStreak, growthVals, mergeProgress, toCSV, weeklySummary, weekStart } from './progress.js';
 import { pull, push, isConfigured, isAuthError, pullDoc, pushDoc } from './sync.js';
 import { defaultProfile, normalizeProfile, mergeDoc } from './profile.js';
+import { mountProfileEditor } from './profileEditor.js';
 import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from './schedule.js';
 import { nextDeadline, formatDates } from './deadlines.js';
 import {
@@ -207,10 +208,11 @@ function renderProfile() {
 
   for (const t of profile.ticks) {
     const btn = document.getElementById(`t-${t.key}`);
-    if (!btn) continue;                       /* extras are built in Task 16 */
+    if (!btn) continue;                       /* extras have no fixed id — renderExtraTicks() below builds and updates them */
     btn.querySelector('.lbl').textContent = t.label;
     btn.querySelector('.hint').textContent = t.hint;
   }
+  renderExtraTicks();
 
   /* Deadlines are profile-derived state too — a profile pulled from another
      device (initSync) or just committed (commitProfile) must refresh the
@@ -232,6 +234,19 @@ function commitProfile() {
   armFlush();
   renderProfile();
 }
+
+/* ---------- profile editor ---------- */
+/* getUsedLaneKeys always hands back an empty set: there is no user-editable
+   schedule to check against yet. profileEditor.js's own delete guard is
+   written and tested against a non-empty set anyway, so a later task only
+   has to swap this function for one backed by the real schedule — nothing
+   in profileEditor.js has to change. */
+mountProfileEditor({
+  root: document.getElementById('profileEditorRoot'),
+  getProfile: () => profile,
+  getUsedLaneKeys: () => new Set(),
+  onChange: (next) => { profile = next; commitProfile(); },
+});
 
 /* ---------- remote sync ---------- */
 const syncEl = document.getElementById('syncStatus');
@@ -471,6 +486,15 @@ function renderScorecard(){
     el.classList.toggle('done',on);
     el.setAttribute('aria-pressed',on);
   });
+  /* Extras never feed the streak (see computeStreak/growthVals in
+     progress.js), but they still get the same pressed/done reflection as
+     the three fixed ticks — rec.x is the extras bag toRow/fromRows in
+     sync.js already read and write under daily_progress.extras. */
+  Object.entries(extraTickEls).forEach(([k,el])=>{
+    const on=!!rec.x?.[k];
+    el.classList.toggle('done',on);
+    el.setAttribute('aria-pressed',on);
+  });
   const d=new Date(selDate+'T00:00:00');
   const isToday=selDate===todayISO();
   /* The design's heading is a flat "Today" beside a small "Thu, 20 Aug". That
@@ -495,6 +519,60 @@ Object.entries(ticks).forEach(([k,el])=>{
   });
 });
 backBtn.addEventListener('click',()=>{selDate=todayISO();renderScorecard();renderCalendar()});
+
+/* ---------- extra ticks ---------- */
+/* Keyed by tick key. Renaming an extra's label or hint updates the element
+   already in this map in place (see the loop in renderProfile()); only
+   adding or deleting one needs this to run, which is why it lives in
+   renderProfile() rather than renderScorecard() — profile changes rebuild
+   the set of buttons, day changes only reread their pressed state. */
+let extraTickEls = {};
+
+function renderExtraTicks() {
+  const container = document.getElementById('ticksList');
+  const wanted = new Set(profile.ticks.filter((t) => !t.core).map((t) => t.key));
+  for (const key of Object.keys(extraTickEls)) {
+    if (!wanted.has(key)) {
+      extraTickEls[key].remove();
+      delete extraTickEls[key];
+    }
+  }
+  for (const t of profile.ticks) {
+    if (t.core) continue;
+    let btn = extraTickEls[t.key];
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tick';
+      btn.setAttribute('aria-pressed', 'false');
+      const mark = document.createElement('span');
+      mark.className = 'mark';
+      mark.setAttribute('aria-hidden', 'true');
+      /* Fixed, non-interpolated markup — the same checkmark path the three
+         core ticks already carry in index.html — not user data, so this is
+         the one innerHTML in this block. label/hint below are user data and
+         go through textContent. */
+      mark.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 12.6 9.4 18 20 6.6"/></svg>';
+      const lbl = document.createElement('span');
+      lbl.className = 'lbl';
+      const hint = document.createElement('span');
+      hint.className = 'hint';
+      btn.append(mark, lbl, hint);
+      const key = t.key;
+      btn.addEventListener('click', () => {
+        const rec = progress[selDate] || (progress[selDate] = {});
+        rec.x = rec.x || {};
+        rec.x[key] = rec.x[key] ? 0 : 1;
+        renderScorecard(); renderCalendar();
+        commit([selDate]);
+      });
+      container.appendChild(btn);
+      extraTickEls[t.key] = btn;
+    }
+    btn.querySelector('.lbl').textContent = t.label;
+    btn.querySelector('.hint').textContent = t.hint;
+  }
+}
 
 const growthEl = document.getElementById('growthDots');
 
@@ -665,7 +743,7 @@ document.getElementById('exportJson').addEventListener('click', () => {
 });
 
 document.getElementById('exportCsv').addEventListener('click', () => {
-  download(`weekly-innings-${todayISO()}.csv`, toCSV(progress), 'text/csv');
+  download(`weekly-innings-${todayISO()}.csv`, toCSV(progress, profile.ticks.filter((t) => !t.core)), 'text/csv');
 });
 
 /* ---------- remote sync bootstrap ---------- */
