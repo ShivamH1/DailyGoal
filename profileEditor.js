@@ -12,7 +12,7 @@
    innerHTML — that is a security control, not a style preference, because
    this session holds a token in localStorage. */
 
-import { normalizeProfile, newTickKey } from './profile.js';
+import { normalizeProfile } from './profile.js';
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -24,9 +24,56 @@ function newLaneKey(lanes) {
   }
 }
 
+/* Supersedes profile.js's newTickKey rather than calling it. newTickKey only
+   ever avoids collision with the CURRENT profile.ticks, which is right for a
+   brand-new profile but wrong the moment a tick has been deleted: deleting
+   an extra does not touch any already-logged rec.x[key] (progress.js never
+   purges it, deliberately — see progress.js and this file's lane guard for
+   the same "logged data is sacred" posture), so the freed key still carries
+   history on every day it was ever ticked. Handing that key to the NEXT
+   invented tick would silently attach someone else's history to a brand-new
+   habit — the same class of meaning-changes-after-the-fact bug this
+   project's streak rule exists to avoid on the study/workout axis.
+   profile.js is not in this task's file list, so newTickKey itself is left
+   untouched; this walks the identical "first free k1, k2, …" sequence but
+   also excludes any key `getReservedTickKeys()` reports as still present in
+   stored progress. */
+function nextTickKey(ticks, reserved) {
+  const used = new Set((ticks || []).map((t) => t.key));
+  for (let i = 1; ; i++) {
+    const k = `k${i}`;
+    if (!used.has(k) && !reserved.has(k)) return k;
+  }
+}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange }) {
+/* normalizeProfile only ever FILTERS each of these lists — it never
+   reorders and it never invents an entry — so a surviving item always
+   appears in the same relative order it had going in. That's what lets this
+   walk both lists once, in lockstep, and say which raw item corresponds to
+   which kept item (or to none) without re-deriving normalizeProfile's own
+   accept/reject rule. */
+function survivedMaskByContent(rawList, keptList, sameItem) {
+  let ki = 0;
+  return rawList.map((raw) => {
+    if (ki < keptList.length && sameItem(raw, keptList[ki])) {
+      ki += 1;
+      return true;
+    }
+    return false;
+  });
+}
+
+export function mountProfileEditor({
+  root, getProfile, getLaneUsage = () => new Set(), getReservedTickKeys = () => new Set(), onChange,
+}) {
+  /* A missing #profileEditorRoot must not be able to take the whole page
+     down. mountProfileEditor is called at app.js's module scope, not inside
+     startApp() — a throw here would happen before the user ever sees the
+     sign-in gate. */
+  if (!root) return;
+
   const doc = root.ownerDocument;
 
   const openBtn = doc.createElement('button');
@@ -60,11 +107,68 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
      rule with no title and a deadline group with no dates, and doing that to
      `draft` the instant a field goes blank would erase the row the user is
      still mid-way through typing into. `draft` stays exactly what the user
-     sees; only the normalized copy handed to onChange is ever pruned. */
+     sees; only the normalized copy handed to onChange is ever pruned. Every
+     row that CAN be pruned also gets a status line — see the update*Statuses
+     functions below — so a drop is reported, never silent. */
   let draft = null;
 
+  /* Row references from the most recent render*() call, so a blur-only edit
+     (which never rebuilds the row list) can still find the right status
+     span to update after a commit. */
+  let ruleRowRefs = [];
+  let deadlineRowRefs = [];
+  let laneRowRefs = [];
+  let tickRowRefs = [];
+
+  function updateRuleStatuses(normalized) {
+    const mask = survivedMaskByContent(
+      draft.rules, normalized.rules, (r, k) => k.title === r.title && k.body === r.body,
+    );
+    ruleRowRefs.forEach(({ status }, i) => {
+      status.textContent = mask[i] ? '' : 'Not saved — add a title.';
+    });
+  }
+
+  function updateDeadlineStatuses(normalized) {
+    const mask = survivedMaskByContent(
+      draft.deadlines, normalized.deadlines, (g, k) => k.label === g.label,
+    );
+    deadlineRowRefs.forEach(({ group, status }, i) => {
+      if (mask[i]) { status.textContent = ''; return; }
+      const hasLabel = !!group.label;
+      const hasDate = group.dates.some((d) => DATE_RE.test(d));
+      status.textContent = !hasLabel && !hasDate ? 'Not saved — add a label and at least one date.'
+        : !hasLabel ? 'Not saved — add a label.'
+        : 'Not saved — add at least one date.';
+    });
+  }
+
+  function updateLaneStatuses(normalized) {
+    laneRowRefs.forEach(({ lane, status }) => {
+      const kept = normalized.lanes.some((l) => l.key === lane.key && l.name === lane.name);
+      if (kept) status.textContent = '';
+      else if (!lane.name) status.textContent = 'Not saved — give this lane a name.';
+      /* else: leave whatever the delete guard already wrote (still-used /
+         last-lane) — this shouldn't otherwise be reachable since lane keys
+         are always unique and generated by newLaneKey. */
+    });
+  }
+
+  function updateTickStatuses(normalized) {
+    tickRowRefs.forEach(({ tick, status }) => {
+      if (tick.core) return;                    /* core ticks are never pruned */
+      const kept = normalized.ticks.some((t) => !t.core && t.key === tick.key);
+      status.textContent = kept || tick.label ? '' : 'Not saved — add a label.';
+    });
+  }
+
   function commit() {
-    onChange(normalizeProfile(draft));
+    const normalized = normalizeProfile(draft);
+    onChange(normalized);
+    updateRuleStatuses(normalized);
+    updateDeadlineStatuses(normalized);
+    updateLaneStatuses(normalized);
+    updateTickStatuses(normalized);
   }
 
   /* ---------- season ---------- */
@@ -90,6 +194,7 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
   /* ---------- ground rules ---------- */
   function renderRules() {
     rulesSection.textContent = '';
+    ruleRowRefs = [];
     const h3 = doc.createElement('h3');
     h3.textContent = 'Ground rules';
     rulesSection.appendChild(h3);
@@ -101,12 +206,14 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
       const title = doc.createElement('input');
       title.type = 'text';
       title.placeholder = 'Title';
+      title.setAttribute('aria-label', 'Rule title');
       title.value = rule.title;
       title.addEventListener('blur', () => { rule.title = title.value.trim(); commit(); });
 
       const body = doc.createElement('input');
       body.type = 'text';
       body.placeholder = 'Body';
+      body.setAttribute('aria-label', 'Rule body');
       body.value = rule.body;
       body.addEventListener('blur', () => { rule.body = body.value.trim(); commit(); });
 
@@ -139,8 +246,12 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
         commit();
       });
 
-      row.append(title, body, up, down, del);
+      const status = doc.createElement('span');
+      status.className = 'pf-row-status';
+
+      row.append(title, body, up, down, del, status);
       rulesSection.appendChild(row);
+      ruleRowRefs.push({ rule, status });
     });
 
     const add = doc.createElement('button');
@@ -156,6 +267,7 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
   /* ---------- deadlines ---------- */
   function renderDeadlines() {
     deadlinesSection.textContent = '';
+    deadlineRowRefs = [];
     const h3 = doc.createElement('h3');
     h3.textContent = 'Deadlines';
     deadlinesSection.appendChild(h3);
@@ -167,6 +279,7 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
       const label = doc.createElement('input');
       label.type = 'text';
       label.placeholder = 'Label';
+      label.setAttribute('aria-label', 'Deadline label');
       label.value = group.label;
       label.addEventListener('blur', () => { group.label = label.value.trim(); commit(); });
       row.appendChild(label);
@@ -176,6 +289,7 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
       group.dates.forEach((d, di) => {
         const dateInput = doc.createElement('input');
         dateInput.type = 'date';
+        dateInput.setAttribute('aria-label', 'Deadline date');
         dateInput.value = d;
         dateInput.addEventListener('blur', () => {
           const v = dateInput.value.trim();
@@ -219,7 +333,12 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
       });
       row.appendChild(delGroup);
 
+      const status = doc.createElement('span');
+      status.className = 'pf-row-status';
+      row.appendChild(status);
+
       deadlinesSection.appendChild(row);
+      deadlineRowRefs.push({ group, status });
     });
 
     const addGroup = doc.createElement('button');
@@ -235,6 +354,7 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
   /* ---------- lanes ---------- */
   function renderLanes() {
     lanesSection.textContent = '';
+    laneRowRefs = [];
     const h3 = doc.createElement('h3');
     h3.textContent = 'Lanes';
     lanesSection.appendChild(h3);
@@ -245,6 +365,8 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
 
       const name = doc.createElement('input');
       name.type = 'text';
+      name.placeholder = 'Lane name';
+      name.setAttribute('aria-label', 'Lane name');
       name.value = lane.name;
       name.addEventListener('blur', () => { lane.name = name.value.trim(); commit(); });
       row.appendChild(name);
@@ -257,13 +379,25 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
       del.type = 'button';
       del.textContent = 'Delete';
       del.addEventListener('click', () => {
-        /* getUsedLaneKeys is called with this lane's key and hands back the
+        /* Every schedule needs somewhere for a block to point at.
+           normalizeProfile enforces this too, but only by resurrecting ALL
+           FIVE defaults the moment the list is emptied (lanes.length ?
+           lanes : base.lanes) — silently, with no way for the user to tell
+           "I deleted my last lane and got five new ones" from "nothing
+           happened". Refusing here means that surprise never has to fire. */
+        if (draft.lanes.length <= 1) {
+          status.textContent = 'Not saved — every schedule needs at least one lane.';
+          return;
+        }
+        /* getLaneUsage is called with this lane's key and hands back the
            set of days (as plain names) whose schedule still points at it.
            Today's caller always passes an empty set — there is no
            user-editable schedule yet — but the guard is written and tested
-           against a non-empty one now so Task 18 only has to swap the
-           function that supplies it, not this behaviour. */
-        const usedBy = getUsedLaneKeys(lane.key) || new Set();
+           against a non-empty one now so a later task only has to swap the
+           function that supplies it, not this behaviour. Defaulted in the
+           destructure AND guarded here: a caller that omits the option
+           entirely must not throw on the first delete click either. */
+        const usedBy = getLaneUsage(lane.key) || new Set();
         if (usedBy.size) {
           status.textContent = `Still used by ${[...usedBy].join(', ')} — remove it from the schedule first.`;
           return;
@@ -275,6 +409,7 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
       row.appendChild(del);
 
       lanesSection.appendChild(row);
+      laneRowRefs.push({ lane, status });
     });
 
     const add = doc.createElement('button');
@@ -290,6 +425,7 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
   /* ---------- ticks ---------- */
   function renderTicks() {
     ticksSection.textContent = '';
+    tickRowRefs = [];
     const h3 = doc.createElement('h3');
     h3.textContent = 'Ticks';
     ticksSection.appendChild(h3);
@@ -301,12 +437,14 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
       const label = doc.createElement('input');
       label.type = 'text';
       label.placeholder = 'Label';
+      label.setAttribute('aria-label', 'Tick label');
       label.value = tick.label;
       label.addEventListener('blur', () => { tick.label = label.value.trim(); commit(); });
 
       const hint = doc.createElement('input');
       hint.type = 'text';
       hint.placeholder = 'Hint';
+      hint.setAttribute('aria-label', 'Tick hint');
       hint.value = tick.hint;
       hint.addEventListener('blur', () => { tick.hint = hint.value.trim(); commit(); });
 
@@ -327,14 +465,20 @@ export function mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange
         row.appendChild(del);
       }
 
+      const status = doc.createElement('span');
+      status.className = 'pf-row-status';
+      row.appendChild(status);
+
       ticksSection.appendChild(row);
+      tickRowRefs.push({ tick, status });
     });
 
     const add = doc.createElement('button');
     add.type = 'button';
     add.textContent = 'Add tick';
     add.addEventListener('click', () => {
-      draft.ticks.push({ key: newTickKey(draft.ticks), label: '', hint: '', core: false });
+      const reserved = getReservedTickKeys() || new Set();
+      draft.ticks.push({ key: nextTickKey(draft.ticks, reserved), label: '', hint: '', core: false });
       renderTicks();
     });
     ticksSection.appendChild(add);

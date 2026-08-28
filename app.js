@@ -236,15 +236,35 @@ function commitProfile() {
 }
 
 /* ---------- profile editor ---------- */
-/* getUsedLaneKeys always hands back an empty set: there is no user-editable
-   schedule to check against yet. profileEditor.js's own delete guard is
-   written and tested against a non-empty set anyway, so a later task only
-   has to swap this function for one backed by the real schedule — nothing
-   in profileEditor.js has to change. */
+/* getLaneUsage(laneKey) always hands back an empty set: there is no
+   user-editable schedule to check against yet. profileEditor.js's own
+   delete guard is written and tested against a non-empty one anyway, so a
+   later task only has to swap this function for one backed by the real
+   schedule — e.g. (laneKey) => new Set(DAY_KEYS.filter((k) =>
+   (WEEK[k]?.blocks || []).some((b) => b.lane === laneKey)).map((k) =>
+   WEEK[k]?.title || k)) — without profileEditor.js changing at all. The
+   name says what it returns (day names a lane is used on), which is what
+   keeps a mismatched stand-in — say, one that returns lane keys instead of
+   day names — visibly wrong at this call site rather than quietly wrong
+   inside the dialog. */
+function reservedTickKeys() {
+  /* Every key that appears in any stored day's extras bag, so an extra
+     tick's key is never handed to a newly invented one — see profileEditor.js's
+     nextTickKey for why that matters. Read fresh from `progress` on every
+     call rather than cached, since `progress` is reassigned wholesale by
+     mergeProgress() during sync. */
+  const keys = new Set();
+  for (const rec of Object.values(progress)) {
+    if (rec && rec.x) for (const k of Object.keys(rec.x)) keys.add(k);
+  }
+  return keys;
+}
+
 mountProfileEditor({
   root: document.getElementById('profileEditorRoot'),
   getProfile: () => profile,
-  getUsedLaneKeys: () => new Set(),
+  getLaneUsage: () => new Set(),
+  getReservedTickKeys: reservedTickKeys,
   onChange: (next) => { profile = next; commitProfile(); },
 });
 

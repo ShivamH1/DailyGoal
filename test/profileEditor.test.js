@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mountProfileEditor } from '../profileEditor.js';
-import { defaultProfile, normalizeProfile } from '../profile.js';
+import { defaultProfile, normalizeProfile, DEFAULT_LANES } from '../profile.js';
 
 /* profileEditor.js takes `root` as a parameter rather than importing
    `document`, precisely so it can be driven here with no browser at all — a
@@ -35,6 +35,10 @@ function makeDoc() {
       disabled: false,
       _text: '',
       listeners: {},
+      attrs: {},
+      setAttribute(name, v) { el.attrs[name] = String(v); },
+      getAttribute(name) { return Object.prototype.hasOwnProperty.call(el.attrs, name) ? el.attrs[name] : null; },
+      removeAttribute(name) { delete el.attrs[name]; },
       get textContent() {
         return el.children.length ? el.children.map((c) => c.textContent).join('') : el._text;
       },
@@ -85,7 +89,7 @@ const buttonsNamed = (root, text) => findAll(root, (el) => el.tagName === 'BUTTO
 test('the three core ticks have no delete control at all — not even a disabled one', () => {
   const root = makeRoot();
   const profile = defaultProfile();
-  mountProfileEditor({ root, getProfile: () => profile, getUsedLaneKeys: () => new Set(), onChange: () => {} });
+  mountProfileEditor({ root, getProfile: () => profile, getLaneUsage: () => new Set(), onChange: () => {} });
   buttonsNamed(root, 'Edit profile')[0].dispatch('click');
 
   const tickRows = findAll(root, (el) => el.className === 'pf-tick-row');
@@ -99,7 +103,7 @@ test('an extra tick gets a delete control, and deleting it removes it from the p
   let changed = null;
   const profile = normalizeProfile({ ticks: [{ key: 'k1', label: 'Read' }] });
   const root = makeRoot();
-  mountProfileEditor({ root, getProfile: () => profile, getUsedLaneKeys: () => new Set(), onChange: (p) => { changed = p; } });
+  mountProfileEditor({ root, getProfile: () => profile, getLaneUsage: () => new Set(), onChange: (p) => { changed = p; } });
   buttonsNamed(root, 'Edit profile')[0].dispatch('click');
 
   const tickRows = findAll(root, (el) => el.className === 'pf-tick-row');
@@ -114,7 +118,7 @@ test('an extra tick gets a delete control, and deleting it removes it from the p
 test('adding an extra tick uses newTickKey and shows up as a fourth row', () => {
   const profile = defaultProfile();
   const root = makeRoot();
-  mountProfileEditor({ root, getProfile: () => profile, getUsedLaneKeys: () => new Set(), onChange: () => {} });
+  mountProfileEditor({ root, getProfile: () => profile, getLaneUsage: () => new Set(), onChange: () => {} });
   buttonsNamed(root, 'Edit profile')[0].dispatch('click');
 
   buttonsNamed(root, 'Add tick')[0].dispatch('click');
@@ -129,7 +133,7 @@ test('deleting a lane still used by the schedule is refused and says which day',
   mountProfileEditor({
     root,
     getProfile: () => profile,
-    getUsedLaneKeys: (key) => (key === 'work' ? new Set(['Monday']) : new Set()),
+    getLaneUsage: (key) => (key === 'work' ? new Set(['Monday']) : new Set()),
     onChange: (p) => { changed = p; },
   });
   buttonsNamed(root, 'Edit profile')[0].dispatch('click');
@@ -150,7 +154,7 @@ test('deleting a lane no schedule block uses succeeds', () => {
   mountProfileEditor({
     root,
     getProfile: () => profile,
-    getUsedLaneKeys: () => new Set(),
+    getLaneUsage: () => new Set(),
     onChange: (p) => { changed = p; },
   });
   buttonsNamed(root, 'Edit profile')[0].dispatch('click');
@@ -166,7 +170,7 @@ test('editing the season commits on blur', () => {
   let changed = null;
   const profile = defaultProfile();
   const root = makeRoot();
-  mountProfileEditor({ root, getProfile: () => profile, getUsedLaneKeys: () => new Set(), onChange: (p) => { changed = p; } });
+  mountProfileEditor({ root, getProfile: () => profile, getLaneUsage: () => new Set(), onChange: (p) => { changed = p; } });
   buttonsNamed(root, 'Edit profile')[0].dispatch('click');
 
   const seasonInput = findAll(root, (el) => el.tagName === 'INPUT' && el.type === 'text')[0];
@@ -180,7 +184,7 @@ test('a newly added rule with no title yet does not reach onChange, matching nor
   let changed = null;
   const profile = defaultProfile();
   const root = makeRoot();
-  mountProfileEditor({ root, getProfile: () => profile, getUsedLaneKeys: () => new Set(), onChange: (p) => { changed = p; } });
+  mountProfileEditor({ root, getProfile: () => profile, getLaneUsage: () => new Set(), onChange: (p) => { changed = p; } });
   buttonsNamed(root, 'Edit profile')[0].dispatch('click');
 
   buttonsNamed(root, 'Add rule')[0].dispatch('click');
@@ -195,4 +199,151 @@ test('a newly added rule with no title yet does not reach onChange, matching nor
 
   assert.equal(changed.rules.length, 1);
   assert.equal(changed.rules[0].title, 'Never miss twice');
+});
+
+/* ---------- fix round 1 ---------- */
+
+test('mounting with no root does nothing rather than throwing', () => {
+  assert.doesNotThrow(() => {
+    mountProfileEditor({ root: null, getProfile: () => defaultProfile(), onChange: () => {} });
+  });
+});
+
+test('a missing getLaneUsage does not throw when a lane is deleted', () => {
+  let changed = null;
+  const profile = defaultProfile();
+  const root = makeRoot();
+  // getLaneUsage deliberately omitted — the default in the destructure must cover it.
+  mountProfileEditor({ root, getProfile: () => profile, onChange: (p) => { changed = p; } });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  const laneRows = findAll(root, (el) => el.className === 'pf-lane-row');
+  assert.doesNotThrow(() => buttonsNamed(laneRows[1], 'Delete')[0].dispatch('click'));
+  assert.ok(changed);
+  assert.equal(changed.lanes.some((l) => l.key === 'work'), false);
+});
+
+test('a rule with a body but no title is not saved, and says so', () => {
+  let changed = null;
+  const profile = defaultProfile();
+  const root = makeRoot();
+  mountProfileEditor({ root, getProfile: () => profile, onChange: (p) => { changed = p; } });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  buttonsNamed(root, 'Add rule')[0].dispatch('click');
+  const row = findAll(root, (el) => el.className === 'pf-rule-row')[0];
+  const bodyInput = findAll(row, (el) => el.placeholder === 'Body')[0];
+  bodyInput.value = 'One day is a rain delay.';
+  bodyInput.dispatch('blur');
+
+  assert.equal(changed.rules.length, 0, 'a title-less rule must not be persisted');
+  const status = findAll(row, (el) => el.className === 'pf-row-status')[0];
+  assert.match(status.textContent, /title/i);
+});
+
+test('a deadline with a label but no dates is not saved, and says so', () => {
+  let changed = null;
+  const profile = defaultProfile();
+  const root = makeRoot();
+  mountProfileEditor({ root, getProfile: () => profile, onChange: (p) => { changed = p; } });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  buttonsNamed(root, 'Add deadline')[0].dispatch('click');
+  const row = findAll(root, (el) => el.className === 'pf-deadline-row')[0];
+  const labelInput = findAll(row, (el) => el.placeholder === 'Label')[0];
+  labelInput.value = 'Midterms';
+  labelInput.dispatch('blur');
+
+  assert.equal(changed.deadlines.length, 0, 'a dateless deadline must not be persisted');
+  const status = findAll(row, (el) => el.className === 'pf-row-status')[0];
+  assert.match(status.textContent, /date/i);
+});
+
+test('a lane added with no name is not saved, and says so', () => {
+  let changed = null;
+  const profile = defaultProfile();
+  const root = makeRoot();
+  mountProfileEditor({ root, getProfile: () => profile, onChange: (p) => { changed = p; } });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  buttonsNamed(root, 'Add lane')[0].dispatch('click');
+  const rows = findAll(root, (el) => el.className === 'pf-lane-row');
+  const newRow = rows[rows.length - 1];
+  findAll(newRow, (el) => el.tagName === 'INPUT')[0].dispatch('blur');
+
+  assert.equal(changed.lanes.length, DEFAULT_LANES.length, 'the nameless lane must not be persisted');
+  const status = findAll(newRow, (el) => el.className === 'pf-lane-status')[0];
+  assert.match(status.textContent, /name/i);
+});
+
+test('an extra tick added with no label is not saved, and says so', () => {
+  let changed = null;
+  const profile = defaultProfile();
+  const root = makeRoot();
+  mountProfileEditor({ root, getProfile: () => profile, onChange: (p) => { changed = p; } });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  buttonsNamed(root, 'Add tick')[0].dispatch('click');
+  const rows = findAll(root, (el) => el.className === 'pf-tick-row');
+  const newRow = rows[rows.length - 1];
+  findAll(newRow, (el) => el.placeholder === 'Hint')[0].dispatch('blur');
+
+  assert.equal(changed.ticks.filter((t) => !t.core).length, 0, 'a label-less extra must not be persisted');
+  const status = findAll(newRow, (el) => el.className === 'pf-row-status')[0];
+  assert.match(status.textContent, /label/i);
+});
+
+test('deleting the last lane is refused rather than letting normalizeProfile silently resurrect the defaults', () => {
+  let changed = null;
+  const profile = normalizeProfile({ lanes: [{ key: 'solo', name: 'Solo' }] });
+  const root = makeRoot();
+  mountProfileEditor({ root, getProfile: () => profile, getLaneUsage: () => new Set(), onChange: (p) => { changed = p; } });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  const rows = findAll(root, (el) => el.className === 'pf-lane-row');
+  assert.equal(rows.length, 1);
+  buttonsNamed(rows[0], 'Delete')[0].dispatch('click');
+
+  assert.equal(changed, null, 'the only lane must never reach onChange as deleted');
+  const status = findAll(rows[0], (el) => el.className === 'pf-lane-status')[0];
+  assert.match(status.textContent, /at least one lane/i);
+});
+
+test('a tick key still present in stored progress is never reused, even after the tick is deleted', () => {
+  /* profile.js's newTickKey only ever avoids collision with the CURRENT
+     profile.ticks. Deleting an extra tick does not touch any day it was
+     already logged against, so the freed key still carries history —
+     handing it to a brand-new invented tick would silently attach that
+     history to an unrelated habit. getReservedTickKeys stands in for the
+     set of keys app.js finds still present in stored progress. */
+  let changed = null;
+  const start = normalizeProfile({ ticks: [{ key: 'k1', label: 'Read' }] });
+  const root = makeRoot();
+  mountProfileEditor({
+    root,
+    getProfile: () => changed || start,
+    getLaneUsage: () => new Set(),
+    getReservedTickKeys: () => new Set(['k1']),
+    onChange: (p) => { changed = p; },
+  });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  // Delete the tick whose key ('k1') is still logged against real days.
+  let tickRows = findAll(root, (el) => el.className === 'pf-tick-row');
+  assert.equal(tickRows.length, 4);
+  buttonsNamed(tickRows[3], 'Delete')[0].dispatch('click');
+  assert.equal(changed.ticks.some((t) => t.key === 'k1'), false);
+
+  // Reopen so the draft reflects the profile with k1 gone, then invent a new one.
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+  buttonsNamed(root, 'Add tick')[0].dispatch('click');
+  tickRows = findAll(root, (el) => el.className === 'pf-tick-row');
+  assert.equal(tickRows.length, 4); // 3 core + the freshly invented one
+  const labelInput = findAll(tickRows[3], (el) => el.placeholder === 'Label')[0];
+  labelInput.value = 'Meditate';
+  labelInput.dispatch('blur');
+
+  const newExtra = changed.ticks.find((t) => !t.core);
+  assert.ok(newExtra, 'the new tick must have been persisted once labelled');
+  assert.notEqual(newExtra.key, 'k1', 'k1 still has history in stored progress and must not be reused');
 });

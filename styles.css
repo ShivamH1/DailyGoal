@@ -571,7 +571,12 @@ footer p{margin:0;font-size:12.5px;color:var(--text-muted)}
 .pf-dates{display:flex;flex-wrap:wrap;gap:var(--space-2);flex:1 1 100%}
 .pf-dates span{display:flex;align-items:center;gap:5px}
 .pf-dates input{width:auto;flex:none}
-.pf-lane-status{font-size:12px;color:var(--warn);flex:1 1 100%}
+/* Shown whenever normalizeProfile would prune (or already pruned) the row
+   above it — a rule with no title, a deadline with no label/date, a lane
+   with no name or still in use, an extra tick with no label — so a drop is
+   always reported, never silent. Empty and takes no space when the row is
+   fine. */
+.pf-lane-status,.pf-row-status{font-size:12px;color:var(--warn);flex:1 1 100%}
 
 /* --- 5 · Response -------------------------------------------------------- */
 /* The design exposes a `stack` prop for the hero; this is that, on a query. */
