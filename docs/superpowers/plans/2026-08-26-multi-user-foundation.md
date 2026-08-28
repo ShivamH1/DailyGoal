@@ -2742,7 +2742,7 @@ A `<dialog>` or a disclosure section — do not add a routing layer. It edits, i
 - **Season** — a single text input.
 - **Ground rules** — add / edit title and body / delete / reorder.
 - **Deadlines** — label plus a list of dates; validate `YYYY-MM-DD` and reject a group with no dates, matching `normalizeProfile`.
-- **Lanes** — rename; add; delete, **but refuse to delete a lane any schedule block still uses** and say which day uses it. (Until Task 18 there is no schedule to check; write the guard against an injected `usedLaneKeys` set so it is ready and testable.)
+- **Lanes** — rename; add; delete, **but refuse to delete a lane any schedule block still uses** and say which day uses it. (Until Task 18 there is no schedule to check; write the guard against an injected `getLaneUsage(laneKey) → Set<dayName>` function so it is ready and testable.)
 - **Ticks** — rename the three core ticks and edit their hints; add an extra via `newTickKey`; delete an extra. **The three core ticks must have no delete control at all** — not a disabled one, and not one that fails on click.
 
 Every change calls `onChange(nextProfile)`, which `app.js` binds to a function that assigns `profile` and calls `commitProfile()`. All text is set with `textContent` and read from `input.value`; nothing is interpolated into `innerHTML`.

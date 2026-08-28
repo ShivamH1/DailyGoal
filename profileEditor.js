@@ -65,9 +65,31 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
    passed. */
 const PROBE_LANE_KEY = { toString: () => '(profileEditor internal probe — must never match a real lane key)' };
 
+/* getLaneUsage's contract requires an actual Set, not merely something
+   Set-shaped-enough — because the guard reads `.size` in a boolean context
+   a few lines below. An Array (or any other object without that property)
+   reads back `undefined` there, which is FALSY, so a lane the schedule
+   genuinely still uses would be silently treated as unused and deleted —
+   the DANGEROUS direction. The original bug this file guards against only
+   ever over-refused (fail-closed); a wrong container fails OPEN, which is
+   worse. Coercing an Array into "must mean a Set of the same values" would
+   paper over exactly the mis-wired call site this exists to surface, so it
+   is refused outright instead — the caller's contract is wrong and belongs
+   fixed at the call site, not guessed at here. */
+function assertIsLaneUsageSet(value, where) {
+  if (!(value instanceof Set)) {
+    const shape = value === null ? 'null' : Array.isArray(value) ? 'an Array' : typeof value;
+    throw new Error(
+      `${where} must return a Set of day names, not ${shape}. Refusing to guess what that ` +
+      'shape means rather than silently treating it as "not in use".',
+    );
+  }
+}
+
 function assertLaneUsageIsWired(getLaneUsage) {
   const probe = getLaneUsage(PROBE_LANE_KEY);
-  if (probe && probe.size) {
+  assertIsLaneUsageSet(probe, 'getLaneUsage(laneKey)');
+  if (probe.size) {
     throw new Error(
       'getLaneUsage(laneKey) returned a non-empty result for a lane key that cannot exist. ' +
       'This means it is ignoring the key it is given and always returning the same answer, ' +
@@ -443,9 +465,28 @@ export function mountProfileEditor({
            assertLaneUsageIsWired runs BEFORE the real call is trusted: a
            mis-wired function that ignores laneKey and always returns the
            same Set would otherwise make every lane look permanently in use,
-           forever, with nothing ever failing loudly enough to notice. */
-        assertLaneUsageIsWired(getLaneUsage);
-        const usedBy = getLaneUsage(lane.key) || new Set();
+           forever, with nothing ever failing loudly enough to notice. The
+           real call is checked again with the same shape assertion — a
+           function need not return a consistent container on every call,
+           and the dangerous case (an Array, where `.size` silently reads
+           back undefined and the "in use" branch below is never taken) is
+           exactly as reachable here as at the probe. */
+        let usedBy;
+        try {
+          assertLaneUsageIsWired(getLaneUsage);
+          usedBy = getLaneUsage(lane.key);
+          assertIsLaneUsageSet(usedBy, 'getLaneUsage(lane.key)');
+        } catch (err) {
+          /* The thrown error is for the developer's console: precise,
+             technical, and left to propagate unchanged below. This is for
+             whoever is looking at the button that just did nothing — the
+             same "reports nothing, changed nothing" silence this file
+             exists to eliminate, just with no devtools open to see why.
+             textContent is synchronous, so it lands even though nothing
+             after the throw runs. */
+          status.textContent = 'Not saved — could not safely check whether this lane is still in use, so nothing was changed.';
+          throw err;
+        }
         if (usedBy.size) {
           status.textContent = `Still used by ${[...usedBy].join(', ')} — remove it from the schedule first.`;
           return;

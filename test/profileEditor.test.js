@@ -434,3 +434,32 @@ test('a pruned deadline group is reported correctly even when a later group shar
   assert.match(status0.textContent, /date/i, 'the pruned first group must say it was not saved');
   assert.equal(status1.textContent, '', 'the surviving second group must not be told it is missing something it already has');
 });
+
+/* ---------- fix round 3 ---------- */
+
+test('a getLaneUsage that returns an Array instead of a Set fails loudly rather than silently deleting an in-use lane', () => {
+  /* A "correct-logic, wrong-container" implementation: it genuinely computes
+     the right days for the right lane, it just forgets to wrap the answer
+     in a Set. `.size` on an Array is `undefined`, which is falsy — so the
+     old code's `if (usedBy.size)` guard would silently take the "not in
+     use" branch and delete a lane the schedule actively depends on. This
+     must fail loudly and change nothing instead. */
+  let changed = null;
+  const profile = defaultProfile(); // DEFAULT_LANES: focus, work, move, commit, rest
+  const root = makeRoot();
+  mountProfileEditor({
+    root,
+    getProfile: () => profile,
+    getLaneUsage: (key) => (key === 'work' ? ['Monday'] : []),
+    onChange: (p) => { changed = p; },
+  });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  const laneRows = findAll(root, (el) => el.className === 'pf-lane-row');
+  const workRow = laneRows[1];
+  assert.throws(() => buttonsNamed(workRow, 'Delete')[0].dispatch('click'));
+  assert.equal(changed, null, 'a lane the schedule uses must never be deleted just because the wrong container silenced the check');
+
+  const status = findAll(workRow, (el) => el.className === 'pf-lane-status')[0];
+  assert.match(status.textContent, /not saved/i, 'the row must say something rather than leave a dead button');
+});
