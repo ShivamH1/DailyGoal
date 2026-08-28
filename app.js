@@ -81,7 +81,23 @@ function renderDay(dayKey) {
 let nowKey = '';
 function renderNow() {
   const { dayKey, minutes } = istNow();
-  const { state, dayKey: blockDay, block } = resolveNow(dayKey, minutes);
+  const result = resolveNow(WEEK, dayKey, minutes);
+  const banner = document.getElementById('nowBanner');
+
+  /* Every brand-new account is exactly here: no blocks anywhere in the
+     week. resolveNow's contract for that case is null, not a block to
+     destructure — the honest banner is "nothing planned yet", not a thrown
+     TypeError that takes the rest of startApp() down with it. */
+  if (!result) {
+    if (nowKey === 'empty') return;
+    nowKey = 'empty';
+    banner.classList.remove('next');
+    banner.innerHTML =
+      `<span class="now-dot" aria-hidden="true"></span><span class="now-text">Nothing scheduled yet</span>`;
+    document.querySelectorAll('.row.is-now').forEach((el) => el.classList.remove('is-now'));
+    return;
+  }
+  const { state, dayKey: blockDay, block } = result;
 
   /* The pill is an aria-live region. Rewriting it every 60 seconds makes
      VoiceOver announce the same sentence once a minute all day, so the DOM is
@@ -101,7 +117,6 @@ function renderNow() {
   const text = state === 'now'
     ? `<b>Now</b> ${label}${to ? ` · until ${to}` : ''}`
     : `<b>Next</b>${dayPrefix} ${label} · ${from}`;
-  const banner = document.getElementById('nowBanner');
   banner.classList.toggle('next', state !== 'now');
   banner.innerHTML =
     `<span class="now-dot" aria-hidden="true"></span><span class="now-text">${text}</span>`;
