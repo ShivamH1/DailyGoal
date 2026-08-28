@@ -7,93 +7,200 @@ import { clearableDates, computeStreak, growthVals, mergeProgress, toCSV, weekly
 import { pull, push, isConfigured, isAuthError, pullDoc, pushDoc } from './sync.js';
 import { defaultProfile, normalizeProfile, mergeDoc } from './profile.js';
 import { mountProfileEditor } from './profileEditor.js';
-import { DAY_KEYS, istDateISO, istNow, resolveNow, emptyWeek } from './schedule.js';
+import { DAY_KEYS, istDateISO, istNow, resolveNow, emptyWeek, formatTime, validateWeek } from './schedule.js';
 import { nextDeadline, formatDates } from './deadlines.js';
 import {
   isAuthConfigured, loadSession, completeSignIn, beginSignIn, signOut,
   stripAuthParams, authView, currentUserId,
 } from './auth.js';
 
-/* schedule.js no longer owns a week (Task 17) — it now takes one as data.
-   This app has nowhere yet to get the user's real week from, so it renders
-   an empty one rather than leaving WEEK undefined, which would stop this
-   module from loading at all. Task 18 replaces this with a stored document
-   and rewires resolveNow's call sites to its new (week, dayKey, minutes)
-   signature. */
-const WEEK = emptyWeek();
+/* Full weekday names, keyed the same way DAY_KEYS spells them. Used as the
+   fallback heading for a day whose own title hasn't been set yet (every
+   brand-new account, and any day a user never got around to naming), and in
+   the NOW banner's cross-day prefix. Not schedule.js's concern — it is
+   display text for this page, not a fact the pure module needs to know. */
+const DAY_NAMES = {
+  mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday',
+  fri: 'Friday', sat: 'Saturday', sun: 'Sunday',
+};
+
+/* This lane's display name, straight from the user's own profile — the lane
+   taxonomy (study/work/fit/cricket/rest, née LANE_LABELS) was one person's
+   and is gone with it. A key with no matching lane (deleted mid-edit, or a
+   stale value left over from before a rename) falls back to the raw key
+   rather than throwing, the same tolerance validateWeek's own "unknown
+   lane" error exists to flag well before rendering ever sees it. */
+function laneName(laneKey) {
+  return profile.lanes.find((l) => l.key === laneKey)?.name || laneKey;
+}
 
 /* ---------- day panels ---------- */
 /* The design's time column: 96px, right-aligned, and a '6:45 – 7:45' range
    split on ' – ' across two lines — '6:45' then '– 7:45'. A block with no
    range ('Morning', '8:15 onwards') stays one line. */
-function whenCell(time) {
-  const [from, to] = time.split(' – ');
-  return `<div class="when"><span>${from}</span>` +
-         (to ? `<span>&ndash; ${to}</span>` : '') + `</div>`;
+function buildWhenCell(block) {
+  const when = document.createElement('div');
+  when.className = 'when';
+  const [from, to] = formatTime(block).split(' – ');
+  const fromSpan = document.createElement('span');
+  fromSpan.textContent = from;
+  when.appendChild(fromSpan);
+  if (to) {
+    const toSpan = document.createElement('span');
+    toSpan.textContent = `– ${to}`;
+    when.appendChild(toSpan);
+  }
+  return when;
 }
-
-/* The legend's own words, so the dot's accessible name and the legend agree.
-   The lane dot is now a soft neutral-400 by the user's decision, which is
-   below the 3:1 graphics floor on purpose — so the lane must not be carried
-   by colour alone. Every dot names its lane in text. schedule.js's own five
-   lane keys, in the stylesheet's original colour order — this list is what
-   turns a lane key into a rotation position now that the stylesheet no
-   longer names any key directly (see styles.css's --lane-pos-N and .legend
-   nth-child rules, the same position-based scheme). */
-const LANE_LABELS = { study: 'Study', work: 'Work', fit: 'Workout', cricket: 'Cricket', rest: 'Rest' };
-const LANE_ORDER = ['study', 'work', 'fit', 'cricket', 'rest'];
 
 /* Time first, then the block: the design's row is a 96px right-aligned time
    column beside a body that opens with the lane dot. The lane is a dot now,
-   not a bar down the side. */
-function rowHTML(dayKey, block, i) {
-  const subj = block.subject ? `<span class="subj">${block.subject}</span>` : '';
-  const eff = block.effort
-    ? `<span class="effort${block.effort.cls ? ' ' + block.effort.cls : ''}">${block.effort.text}</span>`
-    : '';
-  const detail = block.detail ? `<em>${block.detail}</em>` : '';
+   not a bar down the side.
+
+   Every field here — label, subject, effort text, detail, and the lane name
+   itself — is now typed by a user, not baked into the module. Built with
+   createElement/textContent rather than an innerHTML template for exactly
+   that reason; see this task's commit message for what changes once a
+   session token lives in localStorage next to it. */
+function buildBlockRow(dayKey, block, i) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.dataset.day = dayKey;
+  row.dataset.i = String(i);
+
+  const body = document.createElement('div');
+  body.className = 'body';
+
+  const dot = document.createElement('span');
+  dot.className = 'lane-dot';
+  dot.setAttribute('role', 'img');
   /* --lane-i is set to a var() reference, not a bare number: styles.css can
      then just consume it as a colour with no per-key selector, which is the
      whole point — one lane's key never has to be enumerated in the
-     stylesheet. Position in LANE_ORDER, not the key spelling, decides which
-     of the five rotation colours a lane gets. */
-  const laneIdx = LANE_ORDER.indexOf(block.lane);
+     stylesheet. Position in the user's own profile.lanes array, not the key
+     spelling, decides which of the five rotation colours a lane gets — this
+     replaces the deleted LANE_ORDER constant now that lane order is
+     something the user controls, not this file. */
+  const laneIdx = profile.lanes.findIndex((l) => l.key === block.lane);
   const laneVar = laneIdx === -1 ? 'var(--lane-pos-5)' : `var(--lane-pos-${laneIdx + 1})`;
-  return `<div class="row" data-day="${dayKey}" data-i="${i}">` +
-         whenCell(block.time) +
-         `<div class="body"><span class="lane-dot" role="img" style="--lane-i:${laneVar}" ` +
-         `aria-label="${LANE_LABELS[block.lane] || block.lane}" ` +
-         `title="${LANE_LABELS[block.lane] || block.lane}"></span>` +
-         `<div class="what"><strong>${block.label}${subj}${eff}</strong>${detail}</div>` +
-         `</div></div>`;
+  dot.style.setProperty('--lane-i', laneVar);
+  const label = laneName(block.lane);
+  dot.setAttribute('aria-label', label);
+  dot.title = label;
+
+  const what = document.createElement('div');
+  what.className = 'what';
+  const strong = document.createElement('strong');
+  strong.appendChild(document.createTextNode(block.label));
+  if (block.subject) {
+    const subj = document.createElement('span');
+    subj.className = 'subj';
+    subj.textContent = block.subject;
+    strong.appendChild(subj);
+  }
+  if (block.effort) {
+    const eff = document.createElement('span');
+    eff.className = `effort${block.effort.cls ? ' ' + block.effort.cls : ''}`;
+    eff.textContent = block.effort.text;
+    strong.appendChild(eff);
+  }
+  what.appendChild(strong);
+  if (block.detail) {
+    const em = document.createElement('em');
+    em.textContent = block.detail;
+    what.appendChild(em);
+  }
+
+  body.append(dot, what);
+  row.append(buildWhenCell(block), body);
+  return row;
 }
 
+/* Every field a stored day can carry — title, tag, note, and every block
+   inside it — is user-authored, so this whole function builds DOM with
+   createElement/textContent. There is no template string left in it. */
 function renderDay(dayKey) {
-  const day = WEEK[dayKey];
-  document.getElementById('p-' + dayKey).innerHTML =
-    `<div class="day-head"><h3>${day.title}</h3>` +
-    `<span class="tag">${day.tag}</span></div>` +
-    `<p class="day-note">${day.note}</p>` +
-    `<div class="blocks">${day.blocks.map((b, i) => rowHTML(dayKey, b, i)).join('')}</div>`;
+  const day = week[dayKey] || { title: '', tag: '', note: '', blocks: [] };
+  const dayLabel = day.title || DAY_NAMES[dayKey];
+  const panel = document.getElementById('p-' + dayKey);
+  panel.textContent = '';
+
+  const head = document.createElement('div');
+  head.className = 'day-head';
+  const h3 = document.createElement('h3');
+  h3.textContent = dayLabel;
+  head.appendChild(h3);
+  if (day.tag) {
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = day.tag;
+    head.appendChild(tag);
+  }
+  panel.appendChild(head);
+
+  if (day.note) {
+    const note = document.createElement('p');
+    note.className = 'day-note';
+    note.textContent = day.note;
+    panel.appendChild(note);
+  }
+
+  const blocks = document.createElement('div');
+  blocks.className = 'blocks';
+  if (day.blocks.length) {
+    day.blocks.forEach((b, i) => blocks.appendChild(buildBlockRow(dayKey, b, i)));
+  } else {
+    /* Every new account, and any day nothing has been planned for yet.
+       .day-note already carries exactly this weight of muted, sentence-like
+       text (see .rules-empty and .week-empty for the same job elsewhere),
+       so this reuses it rather than asking styles.css for a new rule this
+       task has no reason to touch. addSlot is an empty, unstyled anchor —
+       there is no way yet to add a block by hand. Task 19's week editor
+       fills it in, the same way mountProfileEditor fills
+       #profileEditorRoot: reserving the spot now means that editor lands
+       with no further change to this empty state. */
+    const empty = document.createElement('p');
+    empty.className = 'day-note';
+    empty.textContent = `Nothing planned for ${dayLabel} yet.`;
+    blocks.appendChild(empty);
+    const addSlot = document.createElement('span');
+    addSlot.className = 'day-add-slot';
+    addSlot.dataset.day = dayKey;
+    blocks.appendChild(addSlot);
+  }
+  panel.appendChild(blocks);
 }
 
 /* ---------- NOW ---------- */
 let nowKey = '';
+/* Rebuilds the pill's two children (the dot, the message) fresh each time it
+   actually changes. Kept as one small helper rather than three call sites
+   each rebuilding banner.textContent by hand. */
+function setNowBanner(isNext, build) {
+  const banner = document.getElementById('nowBanner');
+  banner.classList.toggle('next', isNext);
+  banner.textContent = '';
+  const dot = document.createElement('span');
+  dot.className = 'now-dot';
+  dot.setAttribute('aria-hidden', 'true');
+  const text = document.createElement('span');
+  text.className = 'now-text';
+  build(text);
+  banner.append(dot, text);
+}
+
 function renderNow() {
   const { dayKey, minutes } = istNow();
-  const result = resolveNow(WEEK, dayKey, minutes);
-  const banner = document.getElementById('nowBanner');
+  const result = resolveNow(week, dayKey, minutes);
 
   /* Every brand-new account is exactly here: no blocks anywhere in the
      week. resolveNow's contract for that case is null, not a block to
-     destructure — the honest banner is "nothing planned yet", not a thrown
+     destructure — the honest banner is "nothing scheduled", not a thrown
      TypeError that takes the rest of startApp() down with it. */
   if (!result) {
     if (nowKey === 'empty') return;
     nowKey = 'empty';
-    banner.classList.remove('next');
-    banner.innerHTML =
-      `<span class="now-dot" aria-hidden="true"></span><span class="now-text">Nothing scheduled yet</span>`;
+    setNowBanner(false, (text) => { text.textContent = 'Nothing scheduled'; });
     document.querySelectorAll('.row.is-now').forEach((el) => el.classList.remove('is-now'));
     return;
   }
@@ -106,24 +213,33 @@ function renderNow() {
   if (key === nowKey) return;
   nowKey = key;
 
+  /* block.label/block.subject are user-authored, so they can only reach the
+     DOM through textContent — same rule as renderDay's rows, now that this
+     banner reads from the real per-user week instead of one hardcoded
+     schedule. */
   const label = block.subject ? `${block.label} — ${block.subject}` : block.label;
-  const [from, to] = block.time.split(' – ');
-  const dayPrefix = blockDay === dayKey ? '' : ` · ${WEEK[blockDay].title.slice(0, 3)}`;
+  const [from, to] = formatTime(block).split(' – ');
+  const dayName = (week[blockDay] && week[blockDay].title) || DAY_NAMES[blockDay];
+  const dayPrefix = blockDay === dayKey ? '' : ` · ${dayName.slice(0, 3)}`;
   /* The design's wording: '<b>Now</b> Work · until 6:30' for a block in
      progress. A block with no end time ('Lights out', 'Morning') drops the
      tail rather than inventing one. When nothing is running the app's own
      next/gap/rollover wording stands, prefixed with the day when the next
      block belongs to tomorrow. */
-  const text = state === 'now'
-    ? `<b>Now</b> ${label}${to ? ` · until ${to}` : ''}`
-    : `<b>Next</b>${dayPrefix} ${label} · ${from}`;
-  banner.classList.toggle('next', state !== 'now');
-  banner.innerHTML =
-    `<span class="now-dot" aria-hidden="true"></span><span class="now-text">${text}</span>`;
+  setNowBanner(state !== 'now', (text) => {
+    const b = document.createElement('b');
+    b.textContent = state === 'now' ? 'Now' : 'Next';
+    text.appendChild(b);
+    text.appendChild(document.createTextNode(
+      state === 'now'
+        ? ` ${label}${to ? ` · until ${to}` : ''}`
+        : `${dayPrefix} ${label} · ${from}`
+    ));
+  });
 
   document.querySelectorAll('.row.is-now').forEach((el) => el.classList.remove('is-now'));
   if (state === 'now') {
-    const i = WEEK[dayKey].blocks.indexOf(block);
+    const i = week[dayKey].blocks.indexOf(block);
     document.querySelector(`.row[data-day="${dayKey}"][data-i="${i}"]`)?.classList.add('is-now');
   }
 }
@@ -148,6 +264,19 @@ let progress = {};
    so nothing here may collapse it into an empty document. */
 let profile = defaultProfile();
 let profileDoc = null;
+
+/* The per-account schedule document, same shape of contract as the profile
+   pair above. `week` is always a renderable shape (emptyWeek() until a valid
+   one loads); `scheduleDoc` is the raw { value, u } envelope or null. Unlike
+   `profile`, `scheduleDoc.value` is never rewritten to a "fixed" shape —
+   schedule.js has no normalizer, only validateWeek's pass/fail, so an
+   invalid stored week is kept exactly as found rather than replaced with
+   something that lost data. `week` is what actually renders, gated through
+   validateWeek every time scheduleDoc changes; an invalid document falls
+   back to empty there without ever touching what's cached or what would be
+   pushed next, so the raw document survives for the week editor to repair. */
+let week = emptyWeek();
+let scheduleDoc = null;
 
 const saveStatus = document.getElementById('saveStatus');
 /* Save and sync now share one line under the note. They keep one span each —
@@ -256,16 +385,35 @@ function commitProfile() {
   markDocPending('profile');
   armFlush();
   renderProfile();
+  /* The schedule's own render now reads lane names and lane order straight
+     out of `profile` (Task 18) — a renamed, reordered, or deleted lane must
+     be reflected in the day panels the moment the profile edit that changed
+     it is committed, not on the next reload. */
+  DAY_KEYS.forEach(renderDay);
+}
+
+/* Mirrors commitProfile(): stamp, write locally, queue, re-render. week
+   itself is not re-validated here — whatever the caller (the week editor,
+   Task 19) hands over is what gets stamped and stored, the same way
+   commitProfile() never re-validates `profile` either. */
+function commitSchedule() {
+  scheduleDoc = { value: week, u: new Date().toISOString() };
+  if (!saveDoc('schedule', scheduleDoc)) setSaveStatus('⚠ not saved', 'var(--warn)');
+  markDocPending('schedule');
+  armFlush();
+  DAY_KEYS.forEach(renderDay);
+  renderNow();
 }
 
 /* ---------- profile editor ---------- */
 /* getLaneUsage(laneKey) always hands back an empty set: there is no
-   user-editable schedule to check against yet. profileEditor.js's own
+   user-editable schedule to check against yet (this task renders the week;
+   it does not yet let anyone edit its blocks). profileEditor.js's own
    delete guard is written and tested against a non-empty one anyway, so a
    later task only has to swap this function for one backed by the real
    schedule — e.g. (laneKey) => new Set(DAY_KEYS.filter((k) =>
-   (WEEK[k]?.blocks || []).some((b) => b.lane === laneKey)).map((k) =>
-   WEEK[k]?.title || k)) — without profileEditor.js changing at all. The
+   (week[k]?.blocks || []).some((b) => b.lane === laneKey)).map((k) =>
+   week[k]?.title || k)) — without profileEditor.js changing at all. The
    name describes the contract (day names a lane is used on, not lane keys),
    but a name is documentation, not enforcement — profileEditor.js's own
    assertLaneUsageIsWired structurally verifies any getLaneUsage it is
@@ -392,11 +540,10 @@ async function flushSync() {
     if (kinds.length) {
       /* Exactly the trap clearableDates exists for, one document at a time:
          the body is serialised before the await, so an edit made mid-flight
-         must not be cleared by the push that never carried it.
-         scheduleDoc does not exist until Task 18 — docFor returns null for
-         any kind it does not yet know how to find, and that kind is skipped
-         rather than pushed or wrongly cleared. */
-      const docFor = (k) => (k === 'profile' ? profileDoc : null);
+         must not be cleared by the push that never carried it. docFor
+         returns null for any kind it does not know how to find, and that
+         kind is skipped rather than pushed or wrongly cleared. */
+      const docFor = (k) => (k === 'profile' ? profileDoc : k === 'schedule' ? scheduleDoc : null);
       for (const k of kinds) {
         const doc = docFor(k);
         if (!doc) continue;
@@ -404,9 +551,10 @@ async function flushSync() {
            the loop. A pre-loop snapshot is right only for the first kind: by
            the time a later one is reached, earlier pushes have already
            awaited, so its baseline would predate an edit that its own push
-           then correctly carried — and the push would fail to clear. There is
-           only one kind today, so this is dormant until Task 18 adds the
-           schedule; the shape is the same trap clearableDates exists for. */
+           then correctly carried — and the push would fail to clear. Now
+           that 'schedule' is a second kind docFor can resolve, a profile
+           push and a schedule push can genuinely straddle each other's
+           await, which is exactly the trap clearableDates exists for. */
         const sentU = doc.u;
         await pushDoc(k, doc.value, sentU);
         if (docFor(k)?.u === sentU) clearDocPending([k]);
@@ -838,6 +986,29 @@ async function initSync() {
        exactly like the local edit synced when it was actually superseded. */
     if (remoteWon) clearDocPending(['profile']);
     renderProfile();
+    /* Same merge as the profile block just above, with one difference:
+       schedule.js has no normaliser to coerce a bad value into a good one,
+       only validateWeek's pass/fail. So the raw winning envelope is cached
+       and pushed as-is — never "fixed up" — and only the RENDERED `week` is
+       gated through validateWeek, falling back to emptyWeek() when it
+       fails. Nothing downstream ever reads scheduleDoc.value directly, so
+       an invalid remote document can reach localStorage but never the
+       screen, and the week editor (Task 19) still has the original to
+       repair rather than a value this app already gave up on and replaced. */
+    const remoteSchedule = await pullDoc('schedule');
+    const scheduleWinner = mergeDoc(scheduleDoc, remoteSchedule);
+    const scheduleRemoteWon = !!scheduleWinner && scheduleWinner === remoteSchedule;
+    scheduleDoc = scheduleWinner || null;
+    week = scheduleDoc?.value && validateWeek(scheduleDoc.value, profile.lanes.map((l) => l.key)).ok
+      ? scheduleDoc.value
+      : emptyWeek();
+    saveDoc('schedule', scheduleDoc);
+    /* Same reasoning as the profile queue above: a queued local edit that
+       just lost the merge has nothing left to send, and leaving it queued
+       would push the remote value straight back next flush. */
+    if (scheduleRemoteWon) clearDocPending(['schedule']);
+    DAY_KEYS.forEach(renderDay);
+    renderNow();
     lastSyncAt = Date.now();
     offline = false;
   } catch (err) {
@@ -888,6 +1059,17 @@ function startApp() {
   const loadedProfile = loadDoc('profile');
   profile = normalizeProfile(loadedProfile?.value);
   profileDoc = loadedProfile ? { value: profile, u: loadedProfile.u } : null;
+  /* Mirrors the profile load just above, with the difference explained on
+     scheduleDoc's own declaration: the raw envelope is kept as-is (there is
+     no normaliser to run it through), and only `week` — what actually
+     renders — falls back to empty when it fails validateWeek. An invalid
+     stored week is harder to recover from as a half-rendered mess than as
+     an obviously empty day, and the raw document survives in scheduleDoc
+     for the week editor to repair. */
+  scheduleDoc = loadDoc('schedule');
+  week = scheduleDoc?.value && validateWeek(scheduleDoc.value, profile.lanes.map((l) => l.key)).ok
+    ? scheduleDoc.value
+    : emptyWeek();
   DAY_KEYS.forEach(renderDay);
   renderNow();
   showDay(istNow().dayKey);
