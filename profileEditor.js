@@ -48,6 +48,35 @@ function nextTickKey(ticks, reserved) {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/* getLaneUsage's contract is (laneKey) => Set<dayName>, keyed to the ACTUAL
+   argument. A caller that ignores its argument and always returns the same
+   Set — exactly the shape of bug this guards against — would make every
+   lane look permanently in use, and a name that merely DESCRIBES the
+   contract does not stop a careless wiring from violating it; only checking
+   actually stops it. PROBE_LANE_KEY is an object, not a string, specifically
+   so that a real implementation's `block.lane === laneKey` (comparing
+   against a schedule's actual STRING lane keys) can never be true for it —
+   not because of what it looks like (no lane name or day name is ever
+   inspected, so a real day legitimately titled "Focus" is never at risk of
+   tripping this), but because no string is ever `===` to an object
+   reference, in any schedule, by construction. A getLaneUsage that respects
+   its argument is therefore GUARANTEED to return an empty set for this
+   probe; one that returns anything else is provably ignoring what it was
+   passed. */
+const PROBE_LANE_KEY = { toString: () => '(profileEditor internal probe — must never match a real lane key)' };
+
+function assertLaneUsageIsWired(getLaneUsage) {
+  const probe = getLaneUsage(PROBE_LANE_KEY);
+  if (probe && probe.size) {
+    throw new Error(
+      'getLaneUsage(laneKey) returned a non-empty result for a lane key that cannot exist. ' +
+      'This means it is ignoring the key it is given and always returning the same answer, ' +
+      'which would make every lane look permanently in use — refusing to trust it rather ' +
+      'than silently refusing every deletion forever.',
+    );
+  }
+}
+
 /* normalizeProfile only ever FILTERS each of these lists — it never
    reorders and it never invents an entry — so a surviving item always
    appears in the same relative order it had going in. That's what lets this
@@ -129,12 +158,26 @@ export function mountProfileEditor({
     });
   }
 
-  function updateDeadlineStatuses(normalized) {
-    const mask = survivedMaskByContent(
-      draft.deadlines, normalized.deadlines, (g, k) => k.label === g.label,
-    );
-    deadlineRowRefs.forEach(({ group, status }, i) => {
-      if (mask[i]) { status.textContent = ''; return; }
+  /* Matching a raw deadline group to a kept one by label alone breaks the
+     moment two groups share a label — a pruned group ordered before a
+     surviving same-labelled one steals its "kept" match, so the actually-
+     discarded row reports nothing and the actually-saved row is falsely
+     told it's missing a date it already has. Deadlines have no stable key
+     (unlike lanes/ticks) and, unlike rules, DO have a second field (dates)
+     that a label-only comparison throws away — so instead of matching
+     against the full committed list at all, each group is asked whether IT,
+     in isolation, would survive. normalizeProfile never dedupes or
+     cross-checks deadline groups against each other (that's only lanes and
+     ticks, by key), so normalizing a group alone gives exactly the answer
+     it would get as part of the full list — with no sibling to be confused
+     with. */
+  function deadlineGroupSurvives(group) {
+    return normalizeProfile({ deadlines: [group] }).deadlines.length > 0;
+  }
+
+  function updateDeadlineStatuses() {
+    deadlineRowRefs.forEach(({ group, status }) => {
+      if (deadlineGroupSurvives(group)) { status.textContent = ''; return; }
       const hasLabel = !!group.label;
       const hasDate = group.dates.some((d) => DATE_RE.test(d));
       status.textContent = !hasLabel && !hasDate ? 'Not saved — add a label and at least one date.'
@@ -166,7 +209,7 @@ export function mountProfileEditor({
     const normalized = normalizeProfile(draft);
     onChange(normalized);
     updateRuleStatuses(normalized);
-    updateDeadlineStatuses(normalized);
+    updateDeadlineStatuses();
     updateLaneStatuses(normalized);
     updateTickStatuses(normalized);
   }
@@ -396,7 +439,12 @@ export function mountProfileEditor({
            against a non-empty one now so a later task only has to swap the
            function that supplies it, not this behaviour. Defaulted in the
            destructure AND guarded here: a caller that omits the option
-           entirely must not throw on the first delete click either. */
+           entirely must not throw on the first delete click either.
+           assertLaneUsageIsWired runs BEFORE the real call is trusted: a
+           mis-wired function that ignores laneKey and always returns the
+           same Set would otherwise make every lane look permanently in use,
+           forever, with nothing ever failing loudly enough to notice. */
+        assertLaneUsageIsWired(getLaneUsage);
         const usedBy = getLaneUsage(lane.key) || new Set();
         if (usedBy.size) {
           status.textContent = `Still used by ${[...usedBy].join(', ')} — remove it from the schedule first.`;

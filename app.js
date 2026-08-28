@@ -243,10 +243,13 @@ function commitProfile() {
    schedule — e.g. (laneKey) => new Set(DAY_KEYS.filter((k) =>
    (WEEK[k]?.blocks || []).some((b) => b.lane === laneKey)).map((k) =>
    WEEK[k]?.title || k)) — without profileEditor.js changing at all. The
-   name says what it returns (day names a lane is used on), which is what
-   keeps a mismatched stand-in — say, one that returns lane keys instead of
-   day names — visibly wrong at this call site rather than quietly wrong
-   inside the dialog. */
+   name describes the contract (day names a lane is used on, not lane keys),
+   but a name is documentation, not enforcement — profileEditor.js's own
+   assertLaneUsageIsWired structurally verifies any getLaneUsage it is
+   handed actually respects the key it's given (returns empty for a key
+   that cannot exist) before trusting its answer for a real one, so a
+   mismatched stand-in fails loudly on first use instead of silently
+   refusing every deletion forever. */
 function reservedTickKeys() {
   /* Every key that appears in any stored day's extras bag, so an extra
      tick's key is never handed to a newly invented one — see profileEditor.js's

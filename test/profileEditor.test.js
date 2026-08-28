@@ -347,3 +347,90 @@ test('a tick key still present in stored progress is never reused, even after th
   assert.ok(newExtra, 'the new tick must have been persisted once labelled');
   assert.notEqual(newExtra.key, 'k1', 'k1 still has history in stored progress and must not be reused');
 });
+
+/* ---------- fix round 2 ---------- */
+
+test('a getLaneUsage that ignores its argument fails loudly instead of refusing every delete silently', () => {
+  /* This is the plan's own literal Task 19 closure, argument-ignoring and
+     returning lane keys instead of day names — the exact wiring the last
+     round's reviewer proved still slips past a rename alone. */
+  let changed = null;
+  const profile = defaultProfile();
+  const root = makeRoot();
+  mountProfileEditor({
+    root,
+    getProfile: () => profile,
+    getLaneUsage: () => new Set(['focus']),
+    onChange: (p) => { changed = p; },
+  });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  const laneRows = findAll(root, (el) => el.className === 'pf-lane-row');
+  assert.throws(() => buttonsNamed(laneRows[1], 'Delete')[0].dispatch('click'));
+  assert.equal(changed, null, 'a mis-wired getLaneUsage must never be trusted enough to reach onChange either way');
+});
+
+test('a correct getLaneUsage that legitimately returns a day name matching a lane key is not flagged', () => {
+  /* The probe must never accuse a correct caller. A day can legitimately be
+     titled the same as a lane's key (e.g. a lane key "rest" and a day
+     literally titled "rest") — the probe object can never equal a real
+     lane's key by construction, so this must still succeed undisturbed. */
+  let changed = null;
+  const profile = defaultProfile();
+  const root = makeRoot();
+  mountProfileEditor({
+    root,
+    getProfile: () => profile,
+    getLaneUsage: (key) => (key === 'work' ? new Set(['rest']) : new Set()),
+    onChange: (p) => { changed = p; },
+  });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  const laneRows = findAll(root, (el) => el.className === 'pf-lane-row');
+  const workRow = laneRows[1];
+  assert.doesNotThrow(() => buttonsNamed(workRow, 'Delete')[0].dispatch('click'));
+  assert.equal(changed, null, 'work is genuinely in use and must still be refused');
+  const status = findAll(workRow, (el) => el.className === 'pf-lane-status')[0];
+  assert.match(status.textContent, /rest/);
+});
+
+test('a pruned deadline group is reported correctly even when a later group shares its label', () => {
+  /* Reproduces the reviewer's finding: matching raw-to-kept by label alone
+     let a pruned group steal a same-labelled surviving sibling's "kept"
+     match, so the discarded row said nothing and the saved row was falsely
+     told it was missing a date it already had. */
+  let changed = null;
+  const profile = defaultProfile();
+  const root = makeRoot();
+  mountProfileEditor({ root, getProfile: () => profile, onChange: (p) => { changed = p; } });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  // First group: labelled "Exam", never given a date — will be pruned.
+  buttonsNamed(root, 'Add deadline')[0].dispatch('click');
+  let rows = findAll(root, (el) => el.className === 'pf-deadline-row');
+  const firstLabel = findAll(rows[0], (el) => el.placeholder === 'Label')[0];
+  firstLabel.value = 'Exam';
+  firstLabel.dispatch('blur');
+
+  // Second group: same label, given a real date — will survive.
+  buttonsNamed(root, 'Add deadline')[0].dispatch('click');
+  rows = findAll(root, (el) => el.className === 'pf-deadline-row');
+  assert.equal(rows.length, 2);
+  const secondLabel = findAll(rows[1], (el) => el.placeholder === 'Label')[0];
+  secondLabel.value = 'Exam';
+  secondLabel.dispatch('blur');
+  buttonsNamed(rows[1], 'Add date')[0].dispatch('click');
+  rows = findAll(root, (el) => el.className === 'pf-deadline-row'); // rebuilt by "Add date"
+  const dateInput = findAll(rows[1], (el) => el.type === 'date')[0];
+  dateInput.value = '2026-12-01';
+  dateInput.dispatch('blur');
+
+  assert.equal(changed.deadlines.length, 1, 'only the dated group should have been persisted');
+  assert.deepEqual(changed.deadlines[0].dates, ['2026-12-01']);
+
+  const finalRows = findAll(root, (el) => el.className === 'pf-deadline-row');
+  const status0 = findAll(finalRows[0], (el) => el.className === 'pf-row-status')[0];
+  const status1 = findAll(finalRows[1], (el) => el.className === 'pf-row-status')[0];
+  assert.match(status0.textContent, /date/i, 'the pruned first group must say it was not saved');
+  assert.equal(status1.textContent, '', 'the surviving second group must not be told it is missing something it already has');
+});

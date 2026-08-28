@@ -2694,8 +2694,8 @@ MSG
 
 **Interfaces:**
 - Consumes: `profile`, `commitProfile` (Task 14), `newTickKey`, `normalizeProfile` (Task 11).
-- Produces: `mountProfileEditor({ root, getProfile, getUsedLaneKeys, onChange }) → void` in `profileEditor.js`; `toCSV(progress, extras?)` in `progress.js` extended with extras columns.
-  `getUsedLaneKeys` returns a `Set<string>`. In this task `app.js` passes `() => new Set()` — there is no schedule yet. Task 19 replaces it with the real source without touching this module.
+- Produces: `mountProfileEditor({ root, getProfile, getLaneUsage, onChange }) → void` in `profileEditor.js`; `toCSV(progress, extras?)` in `progress.js` extended with extras columns.
+  `getLaneUsage(laneKey)` returns the `Set<string>` of day names whose schedule still uses that lane — not a set of lane keys, which cannot name a day. In this task `app.js` passes `() => new Set()` — there is no schedule yet. Task 19 replaces it with the real source without touching this module. Because a name alone does not stop a wrongly-shaped closure from being wired in, `profileEditor.js` also verifies structurally, on first use, that whatever it is given actually returns nothing for a lane key that cannot exist — refusing to trust an answer that ignores its own argument, rather than silently refusing every deletion forever.
 
 - [ ] **Step 1: Write the failing tests for the export change**
 
@@ -3196,7 +3196,7 @@ Rules:
 
 - [ ] **Step 4: Wire the lane-deletion guard from Task 16**
 
-`mountProfileEditor`'s `getUsedLaneKeys` now has a real source: change `app.js` to pass `() => new Set(DAY_KEYS.flatMap((k) => (week[k]?.blocks || []).map((b) => b.lane)))`. Deleting a lane in use must be refused, naming a day that uses it.
+`mountProfileEditor`'s `getLaneUsage` now has a real source: change `app.js` to pass `(laneKey) => new Set(DAY_KEYS.filter((k) => (week[k]?.blocks || []).some((b) => b.lane === laneKey)).map((k) => week[k]?.title || k))` — filtered to the days that actually use THIS lane, and named by each day's own user-authored title (falling back to its key only if a day has none), so the refusal names the day the way the user named it. Deleting a lane in use must be refused, naming a day that uses it.
 
 - [ ] **Step 5: Verify**
 
