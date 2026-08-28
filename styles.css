@@ -497,6 +497,17 @@ svg{display:block}
 .rule b{font-family:var(--font-heading);font-weight:var(--font-heading-weight);
   font-size:18px;line-height:1.2;letter-spacing:-.015em}
 .rule p{margin:0;font-size:13.5px;color:var(--text-muted)}
+/* The empty state a brand-new account sees before adding any rules of their
+   own. It lands inside the same CSS grid as the .rule cards, so without
+   grid-column:1/-1 it would sit in only the first 260px track, alongside
+   nothing, on any viewport wide enough for a second column — read as a card
+   that failed to render rather than a message. Spanning full width, it reads
+   as a sentence about the section, the same job .week-empty already does for
+   the week's notes list; deliberately NOT given .rule's surface/radius card
+   treatment, so it doesn't imitate a card that came back empty. */
+.rules-empty{grid-column:1/-1;padding:var(--space-4) 0;
+  border-top:1px solid var(--color-divider);
+  font-size:13.5px;color:var(--text-muted)}
 
 /* 4.7 Footer -------------------------------------------------------------- */
 footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;

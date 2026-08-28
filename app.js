@@ -768,11 +768,20 @@ function startApp() {
   renderNow();
   showDay(istNow().dayKey);
   progress = loadProgress();
+  /* renderProfile() before renderScorecard(), per the brief. renderScorecard()
+     doesn't read anything profile-derived today, so this has no observable
+     effect yet, but the ordering is the contract to keep as that changes.
+     renderProfile() ends with its own renderDeadline() call (see the comment
+     there) — the standalone renderDeadline() below is kept anyway, not
+     removed, because an earlier reviewed decision preferred a
+     correct-but-redundant call over a subtle removal. Moving renderProfile()
+     up here breaks the two calls' former line-adjacency, but neither call is
+     deleted. */
+  renderProfile();
   renderScorecard();
   renderCalendar();
   renderWeek();
   renderDeadline();
-  renderProfile();
   initSync();
   setInterval(tick, 60000);
   window.addEventListener('online', flushSync);
