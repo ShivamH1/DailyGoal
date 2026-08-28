@@ -50,3 +50,17 @@ test('formatDates handles a run that crosses a month boundary', () => {
      that do not exist. */
   assert.equal(formatDates(['2026-08-31', '2026-09-01']), '31 Aug – 1 Sep 2026');
 });
+
+test('formatDates spans a contiguous run across a year boundary', () => {
+  /* A single `year` computed once (e.g. from the last date) and reused for
+     both ends is the same bug this task was written to close, one field
+     over: it would print '31 Dec – 1 Jan 2027', misreporting 31 Dec as 2027. */
+  assert.equal(formatDates(['2026-12-31', '2027-01-01']), '31 Dec 2026 – 1 Jan 2027');
+});
+
+test('formatDates lists non-contiguous dates across non-adjacent months and a year boundary', () => {
+  /* Non-adjacent months (Aug, then Jan four months later) so the grouping
+     logic can't coast on every group being next to the last one, and a year
+     boundary so a single global year can't be reused across groups either. */
+  assert.equal(formatDates(['2026-08-31', '2027-01-10']), '31 Aug 2026, 10 Jan 2027');
+});
