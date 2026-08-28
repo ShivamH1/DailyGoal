@@ -7,7 +7,7 @@ import { clearableDates, computeStreak, growthVals, mergeProgress, toCSV, weekly
 import { pull, push, isConfigured, isAuthError, pullDoc, pushDoc } from './sync.js';
 import { defaultProfile, normalizeProfile, mergeDoc } from './profile.js';
 import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from './schedule.js';
-import { nextExam, formatExamDates, EXAMS } from './exams.js';
+import { nextDeadline, formatDates } from './deadlines.js';
 import {
   isAuthConfigured, loadSession, completeSignIn, beginSignIn, signOut,
   stripAuthParams, authView, currentUserId,
@@ -145,11 +145,13 @@ function commit(dates) {
   renderWeek();
 }
 
-/* No profile-specific UI exists yet — Task 13 rewires the day/exam views to
-   read profile.deadlines and grows this function accordingly. Until then
-   this exists only so the pull and commit paths below have a stable
-   re-render hook to call. */
-function renderProfile() {}
+/* The re-render hook called after the profile is committed and after it is
+   pulled from the server. Deadlines are profile-derived state, so they must
+   refresh here — Task 15 grows this further to render the season line,
+   ground rules, legend and tick labels. */
+function renderProfile() {
+  renderDeadline();
+}
 
 /* Same shape as commit(): stamp, write locally, queue, re-render. The stamp
    is what the flush compares against to decide whether an edit landed while
@@ -362,7 +364,7 @@ function rolloverIfNeeded() {
   renderScorecard();
   renderCalendar();
   renderWeek();
-  renderExam();
+  renderDeadline();
 }
 
 /* ---------- scorecard ---------- */
@@ -499,21 +501,22 @@ function renderCalendar(){
 document.getElementById('prevM').addEventListener('click',()=>{calM--;if(calM<0){calM=11;calY--}renderCalendar()});
 document.getElementById('nextM').addEventListener('click',()=>{calM++;if(calM>11){calM=0;calY++}renderCalendar()});
 
-/* ---------- exam countdown ---------- */
-function renderExam() {
-  const next = nextExam(todayISO());
+/* ---------- deadline countdown ---------- */
+function renderDeadline() {
+  const next = nextDeadline(profile.deadlines, todayISO());
   const line = document.getElementById('examLine');
   /* Cleared, not just skipped. Rendering nothing is not the same as leaving
      yesterday's countdown up, and this runs across the midnight after the
-     final exam — where the difference is a line reading 'EC-3 in 1 day'
-     forever. */
+     final deadline — where the difference is a line reading 'EC-3 in 1 day'
+     forever. With no deadlines at all (every new account) this is simply the
+     resting state. */
   if (!next) { line.textContent = ''; line.removeAttribute('title'); return; }
 
   line.textContent = next.days === 0 ? `${next.label} today`
                    : next.days === 1 ? `${next.label} in 1 day`
                    : `${next.label} in ${next.days} days`;
-  const group = EXAMS.find((e) => e.label === next.label);
-  line.title = `${next.label} · ${formatExamDates(group.dates)}`;
+  const group = profile.deadlines.find((d) => d.label === next.label);
+  line.title = `${next.label} · ${formatDates(group.dates)}`;
 }
 
 /* ---------- weekly summary ---------- */
@@ -678,7 +681,7 @@ function startApp() {
   renderScorecard();
   renderCalendar();
   renderWeek();
-  renderExam();
+  renderDeadline();
   renderProfile();
   initSync();
   setInterval(tick, 60000);
