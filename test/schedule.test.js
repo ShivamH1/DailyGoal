@@ -1,113 +1,149 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { WEEK, DAY_KEYS, istDateISO, istNow, resolveNow } from '../schedule.js';
+import {
+  DAY_KEYS, istDateISO, istNow, resolveNow, validateWeek,
+  emptyWeek, minutesToLabel, formatTime,
+} from '../schedule.js';
 
-test('every day has blocks in ascending, non-overlapping order', () => {
-  for (const key of DAY_KEYS) {
-    const blocks = WEEK[key].blocks;
-    assert.ok(blocks.length > 0, `${key} has no blocks`);
-    for (let i = 0; i < blocks.length; i++) {
-      assert.ok(blocks[i].end > blocks[i].start, `${key}[${i}] ends before it starts`);
-      if (i > 0) assert.ok(blocks[i].start >= blocks[i - 1].end, `${key}[${i}] overlaps the previous block`);
-    }
-  }
+/* A fixture, not the app's week. The app no longer has one. */
+const day = (blocks) => ({ title: '', tag: '', note: '', blocks });
+const WEEK = {
+  ...Object.fromEntries(DAY_KEYS.map((k) => [k, day([])])),
+  thu: day([
+    { start: 405, end: 465, label: 'Study', subject: 'Deep Learning', lane: 'focus' },
+    { start: 465, end: 525, label: 'Breakfast', lane: 'rest' },
+    { start: 1155, end: 1215, label: 'Workout', lane: 'move' },
+  ]),
+  fri: day([{ start: 390, end: 405, label: 'Wake up', lane: 'rest' }]),
+};
+
+test('minutesToLabel keeps the twelve-hour, no-meridiem style already on the page', () => {
+  /* The existing schedule reads '9:30 - 6:30' for 570-1110. Changing to a
+     24-hour clock here would silently restyle every row. */
+  assert.equal(minutesToLabel(405), '6:45');
+  assert.equal(minutesToLabel(1110), '6:30');
+  assert.equal(minutesToLabel(1380), '11:00');
+  assert.equal(minutesToLabel(720), '12:00');
+  assert.equal(minutesToLabel(0), '12:00');
 });
 
-test('every block carries a lane that maps to an existing CSS class', () => {
-  const lanes = new Set(['rest', 'study', 'work', 'fit', 'cricket']);
-  for (const key of DAY_KEYS) {
-    for (const b of WEEK[key].blocks) assert.ok(lanes.has(b.lane), `${key}: bad lane ${b.lane}`);
-  }
+test('formatTime derives the range and never stores it', () => {
+  assert.equal(formatTime({ start: 405, end: 465 }), '6:45 – 7:45');
 });
 
-test('istNow reads Kolkata time regardless of process timezone', () => {
-  // 2026-08-20T01:15:00Z is 06:45 IST on a Thursday.
-  assert.deepEqual(istNow(new Date('2026-08-20T01:15:00Z')), { dayKey: 'thu', minutes: 405 });
-});
-
-test('istNow rolls the weekday forward when UTC is still on the previous day', () => {
-  // 2026-08-19T20:00:00Z is 01:30 IST on Thursday.
-  assert.equal(istNow(new Date('2026-08-19T20:00:00Z')).dayKey, 'thu');
+test('formatTime honours an explicit override for a block that is not a range', () => {
+  /* 'Morning', '8:15 onwards' — real cases in the schedule this replaces. */
+  assert.equal(formatTime({ start: 540, end: 780, timeText: 'Morning' }), 'Morning');
 });
 
 test('resolveNow finds the block containing the current minute', () => {
-  const r = resolveNow('thu', 420);           // 07:00, inside 6:45-7:45 study
+  const r = resolveNow(WEEK, 'thu', 420);
   assert.equal(r.state, 'now');
-  assert.match(r.block.label, /Study/);
   assert.equal(r.block.subject, 'Deep Learning');
 });
 
 test('a block is inclusive of its start and exclusive of its end', () => {
-  // 6:45 exactly: study has begun.
-  assert.equal(resolveNow('thu', 405).block.lane, 'study');
-  // 7:45 exactly: study is over and breakfast has begun, back to back.
-  assert.equal(resolveNow('thu', 465).state, 'now');
-  assert.notEqual(resolveNow('thu', 465).block.lane, 'study');
+  assert.equal(resolveNow(WEEK, 'thu', 405).block.label, 'Study');
+  assert.equal(resolveNow(WEEK, 'thu', 465).block.label, 'Breakfast');
 });
 
 test('a gap reports the next block rather than nothing', () => {
-  const r = resolveNow('thu', 1130);          // 18:50, after work, before workout
+  const r = resolveNow(WEEK, 'thu', 1130);
   assert.equal(r.state, 'next');
   assert.equal(r.block.start, 1155);
 });
 
-test('before the first block of the day it reports that block as next', () => {
-  const r = resolveNow('thu', 60);            // 01:00
-  assert.equal(r.state, 'next');
-  assert.equal(r.block.start, WEEK.thu.blocks[0].start);
-});
-
-test('after the last block it rolls over to the next day', () => {
-  const r = resolveNow('thu', 1430);          // 23:50
+test('after the last block it rolls into the following day', () => {
+  const r = resolveNow(WEEK, 'thu', 1430);
   assert.equal(r.state, 'next');
   assert.equal(r.dayKey, 'fri');
-  assert.equal(r.block.start, WEEK.fri.blocks[0].start);
+  assert.equal(r.block.start, 390);
 });
 
-test('sunday rolls over to monday', () => {
-  assert.equal(resolveNow('sun', 1439).dayKey, 'mon');
-});
-
-test('weekend days carry the cricket block', () => {
-  for (const key of ['sat', 'sun']) {
-    const cricket = WEEK[key].blocks.find((b) => b.lane === 'cricket');
-    assert.ok(cricket, `${key} is missing its match`);
-    assert.equal(cricket.start, 930);   // 15:30
-    assert.equal(cricket.end, 1170);    // 19:30
-  }
-});
-
-test('wednesday is the only weekday with two study blocks', () => {
-  const count = (k) => WEEK[k].blocks.filter((b) => b.lane === 'study').length;
-  assert.equal(count('wed'), 2);
-  for (const k of ['mon', 'tue', 'thu', 'fri']) assert.equal(count(k), 1);
-});
-
-test('saturday resolves the gap between the match and dinner', () => {
-  const r = resolveNow('sat', 1185);          // 19:45 — match over at 19:30
+test('it skips over empty days rather than stopping at the first one', () => {
+  /* New and load-bearing: a user may well plan four days and leave three
+     blank. The old implementation looked exactly one day ahead, so an empty
+     tomorrow produced a crash rather than a Wednesday. */
+  const r = resolveNow(WEEK, 'fri', 1439);
   assert.equal(r.state, 'next');
-  assert.equal(r.dayKey, 'sat');
-  assert.equal(r.block.start, 1200);
-  assert.match(r.block.label, /Dinner/);
+  assert.equal(r.dayKey, 'thu');
+  assert.equal(r.block.start, 405);
 });
 
-test('sunday puts the lights out an hour before saturday does', () => {
-  /* The differing weekend shapes: at 22:30 Saturday is still free time,
-     Sunday has already started winding down for a 6:30 Monday. */
-  const sun = resolveNow('sun', 1350);        // 22:30
-  assert.equal(sun.state, 'now');
-  assert.match(sun.block.label, /Lights out/);
-  const sat = resolveNow('sat', 1350);
-  assert.equal(sat.state, 'now');
-  assert.match(sat.block.label, /Completely free/);
-  assert.equal(resolveNow('sat', 1395).block.label, 'Lights out');   // 23:15
+test('an entirely empty week resolves to null instead of looping forever', () => {
+  assert.equal(resolveNow(emptyWeek(), 'mon', 600), null);
+});
+
+test('resolveNow tolerates a day key the week does not define', () => {
+  assert.equal(resolveNow({}, 'mon', 600), null);
+});
+
+test('istNow reads Kolkata time regardless of process timezone', () => {
+  assert.deepEqual(istNow(new Date('2026-08-20T01:15:00Z')), { dayKey: 'thu', minutes: 405 });
+});
+
+test('istNow rolls the weekday forward when UTC is still on the previous day', () => {
+  assert.equal(istNow(new Date('2026-08-19T20:00:00Z')).dayKey, 'thu');
 });
 
 test('istDateISO files a tick under the Kolkata date, not the device one', () => {
-  // 20:00Z on the 19th is already 01:30 on the 20th in IST.
   assert.equal(istDateISO(new Date('2026-08-19T20:00:00Z')), '2026-08-20');
-  // 18:29Z on the 20th is 23:59 IST, still the 20th.
   assert.equal(istDateISO(new Date('2026-08-20T18:29:00Z')), '2026-08-20');
-  // …one minute later it is the 21st in Pune while UTC is still on the 20th.
   assert.equal(istDateISO(new Date('2026-08-20T18:30:00Z')), '2026-08-21');
+});
+
+const LANES = ['focus', 'rest', 'move'];
+
+test('validateWeek accepts a well-formed week', () => {
+  assert.deepEqual(validateWeek(WEEK, LANES), { ok: true, errors: [] });
+});
+
+test('validateWeek accepts an entirely empty week', () => {
+  /* The state every new account starts in. */
+  assert.equal(validateWeek(emptyWeek(), LANES).ok, true);
+});
+
+test('validateWeek rejects a block that ends before it starts', () => {
+  const w = { ...emptyWeek(), mon: day([{ start: 600, end: 500, label: 'x', lane: 'rest' }]) };
+  assert.equal(validateWeek(w, LANES).ok, false);
+  assert.match(validateWeek(w, LANES).errors[0], /mon/);
+});
+
+test('validateWeek rejects minutes outside the day', () => {
+  for (const b of [{ start: -1, end: 60 }, { start: 0, end: 1441 }]) {
+    const w = { ...emptyWeek(), mon: day([{ ...b, label: 'x', lane: 'rest' }]) };
+    assert.equal(validateWeek(w, LANES).ok, false);
+  }
+});
+
+test('validateWeek rejects overlapping blocks', () => {
+  const w = { ...emptyWeek(), mon: day([
+    { start: 400, end: 500, label: 'a', lane: 'rest' },
+    { start: 450, end: 600, label: 'b', lane: 'rest' },
+  ]) };
+  assert.equal(validateWeek(w, LANES).ok, false);
+  assert.match(validateWeek(w, LANES).errors[0], /overlap/i);
+});
+
+test('validateWeek rejects a lane the profile does not define', () => {
+  /* The check that matters most in the next project: a language model will
+     invent a lane name, and an unknown lane renders as an uncoloured,
+     unlabelled dot. */
+  const w = { ...emptyWeek(), mon: day([{ start: 0, end: 60, label: 'x', lane: 'cricket' }]) };
+  assert.equal(validateWeek(w, LANES).ok, false);
+  assert.match(validateWeek(w, LANES).errors[0], /cricket/);
+});
+
+test('validateWeek rejects a block with no label', () => {
+  const w = { ...emptyWeek(), mon: day([{ start: 0, end: 60, label: '  ', lane: 'rest' }]) };
+  assert.equal(validateWeek(w, LANES).ok, false);
+});
+
+test('validateWeek reports every problem, not just the first', () => {
+  /* An editor showing one error at a time turns fixing an AI-generated week
+     into a guessing game. */
+  const w = { ...emptyWeek(), mon: day([
+    { start: 100, end: 50, label: '', lane: 'nope' },
+  ]) };
+  assert.ok(validateWeek(w, LANES).errors.length >= 3);
 });
