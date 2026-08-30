@@ -1,6 +1,6 @@
 /* Classic worker script — not a module, so no imports here.
    Bump CACHE when any shell file changes; activate purges older caches. */
-const CACHE = 'weekly-innings-v6';
+const CACHE = 'weekly-innings-v7';
 
 /* './' rather than './index.html': Vercel's cleanUrls 308-redirects
    /index.html to /, addAll follows the redirect and stores a response with the
@@ -13,10 +13,13 @@ const SHELL = [
   './app.js',
   './auth.js',
   './deadlines.js',
+  './onboarding.js',
   './profile.js',
+  './profileEditor.js',
   './schedule.js',
   './storage.js',
   './sync.js',
+  './weekEditor.js',
   './progress.js',
 ];
 
