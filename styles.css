@@ -694,6 +694,74 @@ footer p{margin:0;font-size:12.5px;color:var(--text-muted)}
 .wk-save-btn{border-color:transparent;background:var(--fill-strong);color:var(--fill-strong-ink)}
 .wk-save-btn:hover{background:var(--fill-strong-hover)}
 
+/* 4.10 First-run wizard -----------------------------------------------------
+   One question per screen, over the app rather than beside it — a first-run
+   user has no reason to look at an empty app while being asked what to put
+   in it, and a half-visible page behind a form reads as something they are
+   being kept out of.
+
+   The shape is the page's own, not a form's: an eyebrow saying where you
+   are, the question as a heading in the display face, one quiet line of why
+   it is being asked, and a single column of fields under it. Actions are
+   pinned to the bottom in the same sticky bar the week editor uses, so the
+   way out is never scrolled off a long screen. Skip setup carries no fill
+   and no border — it is a genuine offer, but it is not the thing to press.
+
+   Every string inside is built by onboarding.js with textContent; this file
+   may style it freely but never supplies its content. */
+.ob{position:fixed;inset:0;z-index:50;overflow-y:auto;
+  display:flex;flex-direction:column;
+  padding:var(--space-8) var(--space-4) 0;background:var(--color-bg)}
+.ob>*{width:min(560px,100%);margin-left:auto;margin-right:auto}
+.ob-progress{margin:0 0 var(--space-2);font-size:12px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--color-accent-700)}
+.ob-title{font-size:26px;margin:0 0 var(--space-2)}
+.ob-blurb{margin:0 0 var(--space-6);font-size:13.5px;color:var(--text-muted);max-width:52ch}
+.ob-body{flex:1 1 auto;padding-bottom:var(--space-6)}
+.ob input,.ob textarea{width:100%;padding:9px 14px;font-size:14px;font-family:inherit;
+  color:var(--color-text);background:var(--color-surface);
+  border:1px solid var(--edge);border-radius:var(--radius-sm)}
+.ob textarea{min-height:76px;resize:vertical}
+/* The examples in the three habit fields, and every other placeholder here,
+   are guidance inside an empty input — quieter than a value, and never
+   stored. They have to read as a suggestion rather than as an answer. */
+.ob input::placeholder,.ob textarea::placeholder{color:var(--text-muted);opacity:1}
+.ob button{border:1px solid var(--color-divider);background:transparent;
+  color:var(--color-text);border-radius:var(--radius-pill);
+  padding:7px 16px;font-size:13px;white-space:nowrap}
+.ob button:hover{background:var(--color-neutral-200)}
+.ob button:disabled{opacity:.4;cursor:default}
+.ob button:disabled:hover{background:transparent}
+
+.ob-field{display:block;margin-bottom:var(--space-3)}
+.ob-field>span{display:block;font-size:12px;margin-bottom:5px;color:var(--text-muted)}
+.ob-row{display:flex;flex-wrap:wrap;gap:var(--space-4)}
+.ob-row .ob-field{flex:1 1 140px}
+.ob-list{display:block}
+.ob-busy,.ob-tick,.ob-lane,.ob-deadline,.ob-rule{
+  display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--space-3);
+  padding:var(--space-3) 0;border-top:1px solid var(--color-divider)}
+.ob-busy .ob-field,.ob-tick .ob-field,.ob-lane .ob-field,
+.ob-deadline .ob-field,.ob-rule .ob-field{flex:1 1 160px;min-width:0;margin-bottom:0}
+.ob-days{display:flex;flex-wrap:wrap;gap:5px;flex:1 1 100%}
+.ob-day{padding:5px 11px;font-size:12px}
+.ob-day[aria-pressed="true"]{border-color:transparent;
+  background:var(--fill-strong);color:var(--fill-strong-ink)}
+.ob-note{margin:var(--space-3) 0 0;font-size:12px;color:var(--text-muted)}
+.ob-add{margin-top:var(--space-3)}
+.ob-done{font-size:14.5px;max-width:52ch}
+
+.ob-actions{position:sticky;bottom:0;display:flex;align-items:center;
+  gap:var(--space-2);padding:var(--space-3) 0;
+  border-top:1px solid var(--color-divider);background:var(--color-bg)}
+.ob-status{margin:0 0 var(--space-2);font-size:12.5px;min-height:1.2em;color:var(--text-muted)}
+.ob-status.ob-warn{color:var(--warn)}
+.ob-next{border-color:transparent;background:var(--fill-strong);color:var(--fill-strong-ink)}
+.ob-next:hover{background:var(--fill-strong-hover)}
+/* Last in the bar and quietest in it. Looking around first is a real choice,
+   so it is always offered — but it is not the one being recommended. */
+.ob-skip{margin-left:auto;border-color:transparent;color:var(--text-muted)}
+
 /* --- 5 · Response -------------------------------------------------------- */
 /* The design exposes a `stack` prop for the hero; this is that, on a query. */
 @media (max-width:840px){
@@ -711,6 +779,11 @@ footer p{margin:0;font-size:12.5px;color:var(--text-muted)}
   .rule,.week-stat{padding:var(--space-4)}
   .row{grid-template-columns:72px 1fr;gap:var(--space-3);padding:var(--space-2)}
   .tick{gap:var(--space-3);padding:var(--space-2) var(--space-3);min-height:68px}
+  /* One field per line: a commitment row is a name, seven day buttons and
+     two times, which is a grid on a laptop and a scramble on a phone. */
+  .ob{padding-left:var(--space-3);padding-right:var(--space-3)}
+  .ob-busy .ob-field,.ob-tick .ob-field,.ob-lane .ob-field,
+  .ob-deadline .ob-field,.ob-rule .ob-field{flex:1 1 100%}
   .tick .mark{width:38px;height:38px}
   .tick .hint{font-size:11px}
   .cal-grid{gap:5px}
