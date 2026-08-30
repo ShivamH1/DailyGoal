@@ -1316,8 +1316,10 @@ async function initSync() {
     describeIdle();
     /* Local-only build: there is no remote profile for a commit to clobber,
        so what is on this device IS the account's profile — provenance
-       known. Without this a build with no Supabase configuration would
-       never offer setup at all. */
+       known. Defence-in-depth, not a reachable path today: an unconfigured
+       build stops at the sign-in gate ("no Supabase configuration"), so
+       nothing ever calls startApp, and this branch runs only if that gate's
+       rule changes. The test pinning the gate is the evidence. */
     profileProvenanceKnown = true;
     mountOnboardingIfNeeded();
     return;
