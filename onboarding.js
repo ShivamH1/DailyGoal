@@ -25,7 +25,7 @@ import { CORE_TICK_KEYS, defaultProfile, normalizeProfile, tickLabel } from './p
    how one of the copies ends up wrong. Same for parseTimeInput: the week
    editor already accepts both the twelve-hour style the page displays and
    the 24-hour string an <input type="time"> hands back. */
-import { nextTickKey } from './profileEditor.js';
+import { assertIsLaneUsageSet, assertLaneUsageIsWired, nextTickKey } from './profileEditor.js';
 import { parseTimeInput } from './weekEditor.js';
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -190,6 +190,13 @@ export function mountOnboarding({
      here can never inherit a deleted habit's past. Defaulted, because a
      brand-new account usually has none. */
   getReservedTickKeys = () => new Set(),
+  /* (laneKey) => Set<dayName> — the SAME usage source the profile editor is
+     wired with, because this wizard mounts over every pre-onboarding
+     profile, including an existing account whose stored week points at
+     these lanes. Removing a used lane here would commit exactly the state
+     the profile editor refuses to create. Defaulted to empty because a
+     brand-new account has no stored week to point anywhere. */
+  getLaneUsage = () => new Set(),
   /* Opens the week editor. PROJECT B REPLACES EXACTLY THIS: the generator
      takes profile.intent — collected on the rhythm and basics steps above and
      read by nothing else in this project — and produces the week the user
@@ -503,6 +510,26 @@ export function mountOnboarding({
           onValue: (v) => { lane.name = v; commitLanes(); },
         }).label);
         rowEl.append(removeButton('Remove', () => {
+          /* The profile editor's guard, honoured here too: a lane the
+             stored week still points at must not be removable during setup.
+             Probe-then-check exactly as profileEditor.js does — a mis-wired
+             getLaneUsage that ignores its argument, or answers with an
+             Array whose .size reads back undefined, would otherwise fail
+             OPEN and delete a lane the week genuinely uses. */
+          let usedBy;
+          try {
+            assertLaneUsageIsWired(getLaneUsage);
+            usedBy = getLaneUsage(lane.key);
+            assertIsLaneUsageSet(usedBy, 'getLaneUsage(lane.key)');
+          } catch (err) {
+            setStatus('Not saved — could not safely check whether this lane is still in use, so nothing was changed.', 'ob-warn');
+            throw err;
+          }
+          if (usedBy.size) {
+            setStatus(`Still used by ${[...usedBy].join(', ')} — remove it from the schedule first.`, 'ob-warn');
+            return;
+          }
+          setStatus('');
           lanes.splice(i, 1);
           commitLanes();
           drawLanes();

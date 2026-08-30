@@ -142,6 +142,7 @@ function wizard(opts = {}) {
     root,
     onDone: (p) => { handed.push(p); return 'result' in opts ? opts.result : true; },
     ...(opts.getProfile ? { getProfile: opts.getProfile } : {}),
+    ...(opts.getLaneUsage ? { getLaneUsage: opts.getLaneUsage } : {}),
     ...(opts.getReservedTickKeys ? { getReservedTickKeys: opts.getReservedTickKeys } : {}),
     ...(opts.noBuildWeek ? {} : { onBuildWeek: () => built.push(true) }),
   });
@@ -383,4 +384,37 @@ test('removing a deadline row removes its whole group', () => {
   button(firstRow, 'Remove').dispatch('click');
   button(root, 'Skip setup').dispatch('click');
   assert.deepEqual(handed[0].deadlines, [{ label: 'EC-2', dates: ['2026-10-01'] }]);
+});
+
+test('the lanes step refuses to remove a lane the stored week still uses, naming the days', () => {
+  /* Setup mounts over EVERY pre-onboarding profile, including an existing
+     account with a real stored week — the same account the profile editor's
+     lane guard exists for. A Remove with no check here lets setup commit a
+     profile whose stored week points at a deleted lane, the exact state the
+     profile editor refuses to create. Same usage source, same refusal, same
+     wording. */
+  const { root, handed } = wizard({
+    getLaneUsage: (key) => (key === 'work' ? new Set(['Monday', 'Tuesday']) : new Set()),
+  });
+  goTo(root, 'lanes');
+  const laneRows = byClass(root, 'ob-lane');
+  button(laneRows[1], 'Remove').dispatch('click');   /* DEFAULT_LANES[1] is Work */
+  assert.equal(
+    statusOf(root).textContent,
+    'Still used by Monday, Tuesday — remove it from the schedule first.',
+  );
+  button(root, 'Skip setup').dispatch('click');
+  assert.ok(handed[0].lanes.some((l) => l.key === 'work'), 'the used lane survives setup');
+});
+
+test('the lanes step still removes a lane nothing uses', () => {
+  const { root, handed } = wizard({
+    getLaneUsage: (key) => (key === 'work' ? new Set(['Monday']) : new Set()),
+  });
+  goTo(root, 'lanes');
+  const laneRows = byClass(root, 'ob-lane');
+  button(laneRows[4], 'Remove').dispatch('click');   /* DEFAULT_LANES[4] is Rest */
+  button(root, 'Skip setup').dispatch('click');
+  assert.equal(handed[0].lanes.some((l) => l.key === 'rest'), false, 'an unused lane removes');
+  assert.ok(handed[0].lanes.some((l) => l.key === 'work'));
 });

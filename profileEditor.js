@@ -90,7 +90,7 @@ const PROBE_LANE_KEY = { toString: () => '(profileEditor internal probe — must
    is of meaning "not used" — tolerating it would fail open in the same
    direction the Array case exists to close, just spelled with a falsier
    value instead of a wrong container. */
-function assertIsLaneUsageSet(value, where) {
+export function assertIsLaneUsageSet(value, where) {
   if (!(value instanceof Set)) {
     const shape = value === null ? 'null' : Array.isArray(value) ? 'an Array' : typeof value;
     throw new Error(
@@ -100,7 +100,10 @@ function assertIsLaneUsageSet(value, where) {
   }
 }
 
-function assertLaneUsageIsWired(getLaneUsage) {
+/* Exported alongside assertIsLaneUsageSet because the onboarding wizard's
+   lanes step honours the same getLaneUsage contract — a third copy of a
+   guard is how one of the copies ends up being the one that fails open. */
+export function assertLaneUsageIsWired(getLaneUsage) {
   const probe = getLaneUsage(PROBE_LANE_KEY);
   assertIsLaneUsageSet(probe, 'getLaneUsage(laneKey)');
   if (probe.size) {

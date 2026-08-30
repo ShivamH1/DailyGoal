@@ -1270,6 +1270,11 @@ function mountOnboardingIfNeeded() {
     /* The same reserved-key source the profile editor uses, so a habit added
        during setup can never inherit a deleted one's logged history. */
     getReservedTickKeys: reservedTickKeys,
+    /* And the same lane-usage source: setup mounts over every profile that
+       has never finished it, including an existing account with a real
+       stored week, and its lanes step must refuse to remove a lane that
+       week still points at — exactly as the profile editor does. */
+    getLaneUsage: laneUsage,
     /* commitProfile's own answer, unaltered — the wizard treats anything
        other than a literal true as "not saved" and stays put, so a failed
        write never leaves someone looking at an app that claims to be set up.
