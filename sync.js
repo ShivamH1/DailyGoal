@@ -6,7 +6,7 @@
    only other caller is the test harness — see the comment on the seam
    itself. One source, so this module and the sign-in gate can never answer
    "is this build configured" differently. */
-import { accessToken, activeConfig, isAuthConfigured } from './auth.js';
+import { accessToken, activeConfig, isAuthConfigured, loadSession } from './auth.js';
 
 const TABLE = 'daily_progress';
 
@@ -49,17 +49,30 @@ const headers = (token, extra = {}) => ({
 export const AUTH_ERROR_MESSAGE = 'not signed in';
 export const isAuthError = (err) => err instanceof Error && err.message === AUTH_ERROR_MESSAGE;
 
+/* A null token is ambiguous on its own: accessToken resolves null both for
+   a refresh the server REJECTED (revoked — and refresh() clears wi:session
+   on exactly that) and for a refresh whose fetch never reached the server
+   at all, which leaves the session where it was. Storage is what tells the
+   two apart, so it is read here, at the moment the null arrives: a session
+   still present means the server never said no, and the failure is the
+   network's. That case must be SHAPED as a network failure — a message
+   isAuthError does not match — because every caller routes auth errors to
+   the sign-in gate, and gating an offline-first app over an unreachable
+   refresh locks the user out at the exact moment they are offline. */
+const noTokenError = () =>
+  new Error(loadSession() ? 'session refresh failed: auth server unreachable' : AUTH_ERROR_MESSAGE);
+
 /* PostgREST can reject a token this client still believes in — a clock skew,
    or simply an app left open past the hour. One forced refresh and one retry;
    a second 401 is a real failure and is thrown, because retrying it again
    would be a loop rather than a recovery. */
 export async function authedFetch(url, opts = {}, { fetchImpl = globalThis.fetch, getToken = accessToken } = {}) {
   let token = await getToken();
-  if (!token) throw new Error(AUTH_ERROR_MESSAGE);
+  if (!token) throw noTokenError();
   let res = await fetchImpl(url, { ...opts, headers: headers(token, opts.headers), ...deadline() });
   if (res.status !== 401) return res;
   token = await getToken({ force: true });
-  if (!token) throw new Error(AUTH_ERROR_MESSAGE);
+  if (!token) throw noTokenError();
   return fetchImpl(url, { ...opts, headers: headers(token, opts.headers), ...deadline() });
 }
 

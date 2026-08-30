@@ -366,3 +366,29 @@ test('pushDoc refuses a blank timestamp, not just a missing one', async () => {
     /timestamp/,
   );
 });
+
+test('a null token with a session still in storage is a network error, not an auth one', async () => {
+  /* accessToken resolves null for BOTH a refresh the server rejected and a
+     refresh whose fetch never reached the server. Storage tells them apart:
+     a genuine rejection clears wi:session, a network failure leaves it. A
+     surviving session must therefore surface as a network-shaped error —
+     isAuthError false — or app.js routes it to the sign-in gate and the
+     offline-first app cannot be used offline. */
+  const saved = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem: (k) => (k === 'wi:session' ? JSON.stringify({ access_token: 'AT', refresh_token: 'RT' }) : null),
+    setItem() {}, removeItem() {},
+  };
+  try {
+    let err = null;
+    let sent = false;
+    await authedFetch('https://x', {}, { fetchImpl: async () => { sent = true; }, getToken: async () => null })
+      .catch((e) => { err = e; });
+    assert.ok(err instanceof Error, 'still throws — there is no token to send with');
+    assert.equal(sent, false, 'and no request went out');
+    assert.equal(isAuthError(err), false, 'but it must not read as a dead session');
+    assert.match(err.message, /unreachable/);
+  } finally {
+    globalThis.localStorage = saved;
+  }
+});

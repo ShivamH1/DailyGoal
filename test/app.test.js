@@ -175,7 +175,7 @@ let bootCount = 0;
    `scheduleDoc` and `weekIsFallback` — while its imports (storage.js,
    schedule.js, the editors) resolve to the same URLs and stay the single
    instances they are in the browser. */
-async function boot({ storageFails, session, fetchImpl, configured = true } = {}) {
+async function boot({ storageFails, session, fetchImpl, configured = true, seed } = {}) {
   const document = makeDom();
   const storage = makeStorage(storageFails);
   define('document', document);
@@ -205,6 +205,11 @@ async function boot({ storageFails, session, fetchImpl, configured = true } = {}
       ...session,
     }));
   }
+  /* Written before app.js evaluates — the only way a test can hand the boot
+     a pre-existing queue or document, because module scope and startApp read
+     storage exactly once. Runs after the session write so a seed may
+     overwrite even that. */
+  if (seed) seed(storage);
   if (fetchImpl) define('fetch', fetchImpl);
 
   const realSetTimeout = globalThis.setTimeout;
@@ -222,6 +227,29 @@ async function boot({ storageFails, session, fetchImpl, configured = true } = {}
   }
 
   return { document, storage, realSetTimeout };
+}
+
+/* The network-tier tests arm real timers — armFlush's 600 ms debounce and
+   flushSync's retry backoff — which would outlive the test and re-run the
+   flush against dead stubs. Captured instead: a zero-delay timer passes
+   through (boot's own settle is one), everything else is recorded with its
+   delay and runs only if the test replays it. Installed BEFORE boot() so the
+   boot-time flush is covered too; always restored in finally. */
+function captureTimers() {
+  const real = globalThis.setTimeout;
+  const armed = [];
+  globalThis.setTimeout = (fn, ms) => {
+    if (!ms) return real(fn, 0);
+    armed.push({ fn, ms });
+    return 0;
+  };
+  return {
+    armed,
+    /* Replays what the app armed, awaiting each: flushSync is async, and
+       asserting before it settles would race it. */
+    async run() { for (const { fn } of armed.splice(0)) await fn(); },
+    restore() { globalThis.setTimeout = real; },
+  };
 }
 
 /* The minimal Response pull() and pullDoc() read: ok, status, json(). */
@@ -649,4 +677,55 @@ test('a profile edit the browser could not cache is reported as not saved on the
      its way to the server, so the message must not claim otherwise. */
   assert.deepEqual(ctx.storage.read('wi:u1:doc-pending'), ['profile']);
   assert.doesNotMatch(status.textContent, /only on this screen/);
+});
+
+test('an unreachable refresh keeps the app up — offline, not signed out', async () => {
+  /* The modal offline case: the app opens past the ~1h access-token TTL
+     with no network. The refresh fetch REJECTS — it never reached the
+     server, so nothing was revoked — but auth.js coerces that to the same
+     null as a genuine rejection, authedFetch's stable "not signed in" made
+     it an auth error, and enterSignedOut gated an offline-first app at the
+     exact moment it was offline, with wi:session still in storage as proof
+     the session was never dead. A surviving session after a failed refresh
+     means UNREACHABLE: the app stays up, the queue stays queued, and the
+     status line talks about the network, not about signing in again. */
+  const timers = captureTimers();
+  try {
+    const ctx = await boot({
+      session: { expires_at: Date.now() - 1000 },  /* past TTL: every request must refresh first */
+      fetchImpl: async () => { throw new TypeError('Failed to fetch'); },
+      seed: (storage) => {
+        storage.setItem('wi:u1:progress', JSON.stringify({ '2026-08-29': { s: 1, u: '2026-08-29T10:00:00.000Z' } }));
+        storage.setItem('wi:u1:pending', JSON.stringify(['2026-08-29']));
+      },
+    });
+    assert.equal(ctx.document.getElementById('appMain').hidden, false, 'the app stays up');
+    assert.equal(ctx.document.getElementById('authGate').hidden, true, 'no sign-in gate');
+    assert.ok(ctx.storage.map.has('wi:session'), 'the session is still in storage');
+    assert.deepEqual(ctx.storage.read('wi:u1:pending'), ['2026-08-29'], 'the queue is untouched');
+    const status = ctx.document.getElementById('syncStatus').textContent;
+    assert.doesNotMatch(status, /signed out/);
+    assert.match(status, /offline|retrying/);
+    assert.doesNotMatch(ctx.document.getElementById('authError').textContent, /expired/);
+  } finally {
+    timers.restore();
+  }
+});
+
+test('a refresh the server rejects still signs the user out at the gate', async () => {
+  /* The other side of the seam, pinned so the unreachable fix cannot eat
+     it: a refresh token the server REJECTED will be rejected again every
+     minute, so signing out is the only exit that does not loop.
+     auth.test.js pins the accessToken half (null + session cleared); this
+     pins what the app does with it — the gate, and no surviving session. */
+  const ctx = await boot({
+    session: { expires_at: Date.now() - 1000 },
+    fetchImpl: async (url) => (String(url).includes('grant_type=refresh_token')
+      ? { ok: false, status: 400, text: async () => 'invalid_grant' }
+      : jsonResponse([])),
+  });
+  assert.equal(ctx.document.getElementById('appMain').hidden, true, 'the app is gated');
+  assert.equal(ctx.document.getElementById('authGate').hidden, false, 'the sign-in gate is shown');
+  assert.equal(ctx.storage.map.has('wi:session'), false, 'the dead session is cleared');
+  assert.match(ctx.document.getElementById('authError').textContent, /expired/);
 });

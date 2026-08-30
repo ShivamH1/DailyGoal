@@ -248,6 +248,12 @@ export function accessToken({
   if (!session.refresh_token) { clearSession(store); return Promise.resolve(null); }
   if (!refreshing) {
     refreshing = refresh({ session, base, apikey, fetchImpl, store, now })
+      /* A rejected fetch resolves to null but — unlike refresh()'s own !ok
+         branch — leaves the session in storage. sync.js's authedFetch reads
+         that difference: token null with a surviving session is
+         "unreachable", token null with none is "signed out". Clearing here
+         would erase the only evidence that the server never rejected
+         anything. */
       .catch(() => null)
       .finally(() => { refreshing = null; });
   }
