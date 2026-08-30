@@ -130,7 +130,17 @@
 
       <!-- 4 · THE WEEK'S SHAPE -->
       <section class="shape" aria-label="The week’s shape">
-        <h2>The week’s shape</h2>
+        <!-- The edit control belongs beside the thing it edits, not down in
+             the account bar with sign-out and export: this is where the week
+             is read, so it is where changing it is offered. Filled by
+             mountWeekEditor() (weekEditor.js) with a button and its
+             <dialog>; nothing inside is static markup, because every string
+             in it is user-authored and therefore goes in through
+             textContent, never innerHTML. -->
+        <div class="shape-head">
+          <h2>The week’s shape</h2>
+          <span id="weekEditorRoot"></span>
+        </div>
 
         <div class="legend" id="legendList"></div>
 

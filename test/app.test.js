@@ -1,0 +1,395 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { setNamespace } from '../storage.js';
+import { DAY_KEYS } from '../schedule.js';
+
+/* app.js booted for real, with no browser.
+
+   Everything else in this repo is a pure module or an editor that takes its
+   root as a parameter, so it could be tested by importing it. app.js cannot:
+   it reads `document` at module scope. That is exactly why it had no test at
+   all — and why nine separate mutations to it, including the two shapes of
+   this project's original "said saved, saved nothing" bug, all stayed green
+   on a 259-test suite.
+
+   It is a missing test, not an impossibility. app.js touches a small and
+   countable slice of the DOM (createElement, getElementById, textContent,
+   appendChild, classList, dataset, style, a couple of querySelectors), so a
+   hand-rolled stand-in built from plain object literals is enough to boot it
+   — the same approach test/profileEditor.test.js and test/weekEditor.test.js
+   already take for the two editors, and the same zero dependencies.
+
+   What that buys is the only place these behaviours exist: the real
+   commitSchedule, the real onChange closures wired to the real editors, and
+   the real getLaneUsage, driven end to end through the two dialogs the user
+   actually presses.
+
+   Module scope stops short of startApp(): the sign-in gate only calls it for
+   a stored session, and there is none here, so no timer starts and nothing
+   reaches the network. The state each test needs is therefore built the way
+   a user builds it — through the editors — rather than injected. */
+
+/* ---------- the DOM stand-in ---------- */
+function makeDom() {
+  const byId = new Map();
+
+  function createTextNode(text) {
+    const node = { tagName: '#text', children: [], parentNode: null, textContent: String(text) };
+    return node;
+  }
+
+  function createElement(tag) {
+    const el = {
+      tagName: String(tag).toUpperCase(),
+      children: [],
+      parentNode: null,
+      className: '',
+      type: '',
+      placeholder: '',
+      title: '',
+      hidden: false,
+      disabled: false,
+      open: false,
+      _text: '',
+      _value: '',
+      listeners: {},
+      attrs: {},
+      dataset: {},
+      style: { setProperty() {} },
+      classList: {
+        _set: new Set(),
+        add(...c) { c.forEach((x) => el.classList._set.add(x)); },
+        remove(...c) { c.forEach((x) => el.classList._set.delete(x)); },
+        toggle(c, on) { if (on) el.classList._set.add(c); else el.classList._set.delete(c); },
+        contains(c) { return el.classList._set.has(c); },
+      },
+      setAttribute(name, v) { el.attrs[name] = String(v); },
+      getAttribute(name) { return Object.prototype.hasOwnProperty.call(el.attrs, name) ? el.attrs[name] : null; },
+      removeAttribute(name) { delete el.attrs[name]; },
+      get value() { return el._value; },
+      set value(v) {
+        /* A real <select> cannot hold a value none of its options carry; the
+           week editor relies on that (it adds an option for an unknown lane
+           precisely so the stored value stays visible). Same rule as
+           test/weekEditor.test.js's stand-in, for the same reason. */
+        if (el.tagName === 'SELECT' && !el.children.some((c) => c.tagName === 'OPTION' && c.value === String(v))) {
+          el._value = '';
+          return;
+        }
+        el._value = String(v);
+      },
+      get textContent() {
+        return el.children.length ? el.children.map((c) => c.textContent).join('') : el._text;
+      },
+      set textContent(v) { el._text = String(v); el.children = []; },
+      /* app.js's four innerHTML writes are its own fixed markup (a checkmark
+         <svg>, the growth dots, the calendar cell) — never user data, which
+         is the rule this stand-in does not need to model. It only has to not
+         throw. */
+      set innerHTML(v) { el._text = ''; el.children = []; el._html = String(v); },
+      get innerHTML() { return el._html || ''; },
+      appendChild(child) { el.children.push(child); child.parentNode = el; return child; },
+      append(...items) {
+        for (const item of items) el.appendChild(typeof item === 'string' ? createTextNode(item) : item);
+      },
+      remove() {
+        if (el.parentNode) el.parentNode.children = el.parentNode.children.filter((c) => c !== el);
+      },
+      /* renderProfile/renderExtraTicks reach into a tick button for its .lbl
+         and .hint spans. Memoised so two reads of the same selector are the
+         same node, as they would be in a browser. */
+      querySelector(sel) {
+        el._q = el._q || new Map();
+        if (!el._q.has(sel)) el._q.set(sel, createElement('span'));
+        return el._q.get(sel);
+      },
+      addEventListener(type, fn) { (el.listeners[type] ||= []).push(fn); },
+      dispatch(type) {
+        const event = { target: el, defaultPrevented: false, preventDefault() { event.defaultPrevented = true; } };
+        (el.listeners[type] || []).forEach((fn) => fn(event));
+        return event;
+      },
+      showModal() { el.open = true; },
+      close() { el.open = false; },
+      scrollIntoView() {},
+      click() { el.dispatch('click'); },
+    };
+    el.ownerDocument = document;
+    return el;
+  }
+
+  const document = {
+    createElement,
+    createTextNode,
+    visibilityState: 'visible',
+    /* Permissive on purpose: index.html is not parsed here, and app.js reads
+       forty ids at module scope. Every one of them gets a real element, so a
+       missing id can never be what a failure is about. */
+    getElementById(id) {
+      if (!byId.has(id)) byId.set(id, createElement('div'));
+      return byId.get(id);
+    },
+    /* app.js's own two: '.row.is-now' (rows this stand-in never registers)
+       and the .scorecard scroll target, both behind ?. or .forEach. */
+    querySelector() { return null; },
+    querySelectorAll() { return []; },
+    addEventListener() {},
+  };
+  return document;
+}
+
+/* ---------- localStorage stand-in ---------- */
+/* `fails` decides which keys refuse a write, which is the only way to reach
+   commitSchedule's failed-local-write branch: quota, Lockdown Mode and
+   storage switched off are all a throwing setItem. */
+function makeStorage(fails = () => false) {
+  const map = new Map();
+  return {
+    map,
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem(k, v) {
+      if (fails(k)) throw new Error('QuotaExceededError');
+      map.set(k, String(v));
+    },
+    removeItem: (k) => map.delete(k),
+    read: (k) => JSON.parse(map.get(k) ?? 'null'),
+  };
+}
+
+const define = (name, value) =>
+  Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+
+let bootCount = 0;
+
+/* Boots a fresh copy of app.js against fresh stand-ins. The cache-busting
+   query re-evaluates app.js — so each test gets its own `week`, `profile`,
+   `scheduleDoc` and `weekIsFallback` — while its imports (storage.js,
+   schedule.js, the editors) resolve to the same URLs and stay the single
+   instances they are in the browser. */
+async function boot({ storageFails } = {}) {
+  const document = makeDom();
+  const storage = makeStorage(storageFails);
+  define('document', document);
+  define('localStorage', storage);
+  define('window', { addEventListener() {} });
+  define('history', { replaceState() {} });
+  define('location', { href: 'https://weekly-innings.test/', origin: 'https://weekly-innings.test', pathname: '/', reload() {}, assign() {} });
+  if (typeof navigator === 'undefined') define('navigator', {});
+  setNamespace('u1');
+
+  const realSetTimeout = globalThis.setTimeout;
+  await import(`../app.js?boot=${++bootCount}`);
+  /* The module-scope sign-in check is async. Let it settle before driving
+     anything, so no render lands mid-test. */
+  await new Promise((resolve) => realSetTimeout(resolve, 0));
+
+  return { document, storage, realSetTimeout };
+}
+
+/* armFlush() schedules flushSync, which is the network tier. Every drive
+   below is synchronous, so the timer is simply never handed a real clock —
+   restored immediately afterwards so node:test keeps its own. */
+function drive(ctx, fn) {
+  const real = ctx.realSetTimeout;
+  globalThis.setTimeout = () => 0;
+  try { return fn(); } finally { globalThis.setTimeout = real; }
+}
+
+/* ---------- reading the stand-in back ---------- */
+function collect(el, out = []) {
+  out.push(el);
+  for (const c of el.children) collect(c, out);
+  return out;
+}
+const findAll = (root, pred) => collect(root).filter(pred);
+const byClass = (root, cls) => findAll(root, (el) => el.className === cls);
+const button = (root, text) => findAll(root, (el) => el.tagName === 'BUTTON' && el.textContent === text)[0];
+const control = (row, aria) => findAll(row, (el) => el.getAttribute('aria-label') === aria)[0];
+
+const weekRoot = (ctx) => ctx.document.getElementById('weekEditorRoot');
+const profileRoot = (ctx) => ctx.document.getElementById('profileEditorRoot');
+const weekStatus = (ctx) => findAll(weekRoot(ctx), (el) => el.className.startsWith('wk-status'))[0];
+const blockRows = (ctx) => byClass(weekRoot(ctx), 'wk-block');
+const daySection = (ctx, dayKey) => byClass(weekRoot(ctx), 'wk-day')[DAY_KEYS.indexOf(dayKey)];
+const laneRows = (ctx) => byClass(profileRoot(ctx), 'pf-lane-row');
+const laneRow = (ctx, name) => laneRows(ctx).find((r) => control(r, 'Lane name').value === name);
+
+const openWeekEditor = (ctx) => button(weekRoot(ctx), 'Edit the week').dispatch('click');
+const openProfileEditor = (ctx) => button(profileRoot(ctx), 'Edit profile').dispatch('click');
+
+/* Adds one block to `dayKey` through the real form: the button, the label
+   field, the lane <select>. */
+function addBlock(ctx, dayKey, label, laneKey) {
+  const section = daySection(ctx, dayKey);
+  button(section, 'Add block').dispatch('click');
+  const row = byClass(section, 'wk-block').at(-1);
+  control(row, 'Block label').value = label;
+  control(row, 'Block label').dispatch('blur');
+  if (laneKey) {
+    control(row, 'Lane').value = laneKey;
+    control(row, 'Lane').dispatch('change');
+  }
+  return row;
+}
+
+const storedWeek = (ctx) => ctx.storage.read('wi:u1:schedule')?.value ?? null;
+const storedLaneKeys = (ctx) => (ctx.storage.read('wi:u1:profile')?.value.lanes ?? []).map((l) => l.key);
+
+/* Blanking a lane's name is the one route a user has to a stored week the
+   gate then refuses: normalizeProfile drops a lane with no name, commitProfile
+   re-gates against what is left, and a block still pointing at the dropped
+   key makes the stored week unreadable. Not a contrivance — it is the exact
+   lockout the week editor's refusal panel exists for. */
+function blankLaneName(ctx, name) {
+  const input = control(laneRow(ctx, name), 'Lane name');
+  input.value = '';
+  input.dispatch('blur');
+}
+
+/* ---------- the tests ---------- */
+
+test('a week the browser could not cache is reported as not saved, not as saved', async () => {
+  /* Both halves of this project's original bug live on this line:
+     commitSchedule must return the LOCAL WRITE'S OWN result rather than
+     true-if-we-got-this-far, and app.js's onChange must hand that result
+     back to the editor unaltered. Either one hardcoded to `true` closes the
+     dialog on an edit that is gone by the next reload, saying "✓ Saved". */
+  const ctx = await boot({ storageFails: (k) => k === 'wi:u1:schedule' });
+  drive(ctx, () => {
+    openWeekEditor(ctx);
+    addBlock(ctx, 'mon', 'Revision');
+    button(weekRoot(ctx), 'Save the week').dispatch('click');
+  });
+
+  const text = weekStatus(ctx).textContent;
+  assert.match(text, /Not saved/);
+  assert.doesNotMatch(text, /✓|Saved\./);
+  assert.equal(ctx.storage.map.has('wi:u1:schedule'), false, 'nothing was cached');
+  /* And the message may not say the edit is only on this screen: the queue
+     write is a different, much smaller key and it landed. */
+  assert.deepEqual(ctx.storage.read('wi:u1:doc-pending'), ['schedule']);
+  assert.doesNotMatch(text, /only on this screen/);
+});
+
+test('a week that saved is reported as saved, and is what got stored', async () => {
+  /* The other direction of the same contract — a guard that always returns
+     false would pass the test above and break the app. */
+  const ctx = await boot();
+  drive(ctx, () => {
+    openWeekEditor(ctx);
+    addBlock(ctx, 'mon', 'Revision');
+    button(weekRoot(ctx), 'Save the week').dispatch('click');
+  });
+
+  assert.match(weekStatus(ctx).textContent, /Saved/);
+  assert.equal(storedWeek(ctx).mon.blocks[0].label, 'Revision');
+  assert.equal(storedWeek(ctx).mon.blocks[0].lane, 'focus');
+});
+
+test('while the stored week cannot be read, saving does not overwrite it', async () => {
+  /* commitSchedule's early return is the only thing standing between a
+     failed load and permanent data loss: `week` is emptyWeek() standing in
+     for a document that failed validation, and writing it back replaces the
+     real week locally and then, on the next flush, everywhere. */
+  const ctx = await boot();
+  drive(ctx, () => {
+    openWeekEditor(ctx);
+    addBlock(ctx, 'mon', 'Revision');
+    button(weekRoot(ctx), 'Save the week').dispatch('click');
+  });
+  const before = storedWeek(ctx);
+  assert.equal(before.mon.blocks.length, 1);
+
+  drive(ctx, () => {
+    /* Empty the day in the still-open dialog first, so what Save offers is
+       valid against the lanes that survive — otherwise validateWeek refuses
+       it before commitSchedule is ever reached, and the guard under test
+       never runs. */
+    button(byClass(weekRoot(ctx), 'wk-block')[0], 'Delete').dispatch('click');
+    openProfileEditor(ctx);
+    blankLaneName(ctx, 'Focus');
+    button(weekRoot(ctx), 'Save the week').dispatch('click');
+  });
+
+  assert.deepEqual(storedWeek(ctx), before, 'the stored week is untouched');
+  assert.match(weekStatus(ctx).textContent, /could not be read/);
+});
+
+test('a lane the stored week still uses cannot be deleted — even while that week cannot be read', async () => {
+  /* The state this guard exists for is exactly the state it used to fail
+     open in. getLaneUsage read the RENDERED week, which is emptyWeek()
+     whenever the stored one was refused, so every lane reported zero usage
+     and all of them could be deleted — letting a user already locked out
+     delete the very lanes that would have got them back in. */
+  const ctx = await boot();
+  drive(ctx, () => {
+    openWeekEditor(ctx);
+    addBlock(ctx, 'mon', 'Revision', 'focus');
+    addBlock(ctx, 'tue', 'Standup', 'work');
+    button(weekRoot(ctx), 'Save the week').dispatch('click');
+    openProfileEditor(ctx);
+    blankLaneName(ctx, 'Focus');                 /* the stored week is now unreadable */
+    button(laneRow(ctx, 'Work'), 'Delete').dispatch('click');
+  });
+
+  const status = byClass(laneRow(ctx, 'Work'), 'pf-lane-status')[0];
+  /* 'Tuesday', not 'tue': a week built in this editor stores title: '' — no
+     day title is editable anywhere in the app — so the raw key was the only
+     branch that fallback could ever take. */
+  assert.equal(status.textContent, 'Still used by Tuesday — remove it from the schedule first.');
+  assert.ok(storedLaneKeys(ctx).includes('work'), 'the lane is still in the profile');
+});
+
+test('a lane nothing points at still deletes, and one the visible week uses does not', async () => {
+  /* The shape contract, executed rather than described. profileEditor.js
+     probes getLaneUsage with an object no block lane can equal and demands
+     an empty Set back, then demands a real Set (not an Array, whose .size is
+     undefined and would fail OPEN) for the real answer. A getLaneUsage that
+     ignored its argument, or returned an Array, or returned day objects
+     instead of names, breaks one of these two halves. */
+  const ctx = await boot();
+  drive(ctx, () => {
+    openWeekEditor(ctx);
+    addBlock(ctx, 'mon', 'Revision', 'focus');
+    button(weekRoot(ctx), 'Save the week').dispatch('click');
+    openProfileEditor(ctx);
+    button(laneRow(ctx, 'Rest'), 'Delete').dispatch('click');
+  });
+  assert.equal(storedLaneKeys(ctx).includes('rest'), false, 'an unused lane deletes');
+
+  drive(ctx, () => button(laneRow(ctx, 'Focus'), 'Delete').dispatch('click'));
+  assert.equal(
+    byClass(laneRow(ctx, 'Focus'), 'pf-lane-status')[0].textContent,
+    'Still used by Monday — remove it from the schedule first.',
+  );
+  assert.ok(storedLaneKeys(ctx).includes('focus'));
+});
+
+test('the refusal restores the lane it names, and the stored week comes back untouched', async () => {
+  /* End to end through the real app: the editor works out which lane keys
+     the stored document points at that the profile lacks, creates them with
+     those exact keys, and the gate re-runs — the recovery the old hint
+     described and the app could not perform, because newLaneKey only ever
+     emits lane1, lane2, … */
+  const ctx = await boot();
+  drive(ctx, () => {
+    openWeekEditor(ctx);
+    addBlock(ctx, 'mon', 'Revision', 'focus');
+    button(weekRoot(ctx), 'Save the week').dispatch('click');
+    button(weekRoot(ctx), 'Close').dispatch('click');
+    openProfileEditor(ctx);
+    blankLaneName(ctx, 'Focus');
+  });
+  const before = storedWeek(ctx);
+
+  drive(ctx, () => openWeekEditor(ctx));
+  assert.equal(blockRows(ctx).length, 0, 'no form while the stored week is unreadable');
+  assert.match(byClass(weekRoot(ctx), 'wk-refusal-hint')[0].textContent, /Focus/);
+
+  drive(ctx, () => button(weekRoot(ctx), 'Restore the missing lane').dispatch('click'));
+
+  assert.equal(blockRows(ctx).length, 1, 'the stored week is editable again');
+  assert.equal(control(blockRows(ctx)[0], 'Block label').value, 'Revision');
+  assert.ok(storedLaneKeys(ctx).includes('focus'), 'the lane was created with its stored key');
+  assert.deepEqual(storedWeek(ctx), before, 'and the week itself was never rewritten');
+});

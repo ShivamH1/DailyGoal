@@ -420,7 +420,17 @@ svg{display:block}
 
 /* 4.5 The week's shape ---------------------------------------------------- */
 .shape{margin-bottom:var(--space-section)}
-.shape h2{margin:0 0 var(--space-3)}
+/* The heading and the control that edits what is under it, on one line. The
+   button sits here rather than in the account bar because this is where the
+   week is read; #weekEditorRoot is display:contents so its wrapper adds no
+   box of its own, exactly as #profileEditorRoot does in the footer. */
+.shape-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;
+  gap:var(--space-3);margin-bottom:var(--space-3)}
+.shape-head h2{margin:0}
+#weekEditorRoot{display:contents}
+.week-edit-btn{border:1px solid var(--color-divider);background:transparent;
+  color:var(--color-text);border-radius:var(--radius-pill);padding:6px 14px;font-size:12.5px}
+.week-edit-btn:hover{background:var(--color-neutral-200)}
 .legend{display:flex;flex-wrap:wrap;gap:var(--space-2) var(--space-4);
   margin-bottom:var(--space-4);font-size:12.5px;color:var(--text-muted)}
 .legend span{display:inline-flex;align-items:center;gap:7px}
@@ -578,6 +588,88 @@ footer p{margin:0;font-size:12.5px;color:var(--text-muted)}
    fine. */
 .pf-lane-status,.pf-row-status{font-size:12px;color:var(--warn);flex:1 1 100%}
 
+/* 4.9 Week editor ----------------------------------------------------------
+   Built entirely by weekEditor.js, and shaped to read like the thing it
+   edits rather than like a form: a day is a heading with a stack of blocks
+   under it, and each block leads with its times in a narrow fixed column,
+   the same way .row does in the panels above. The optional fields (subject,
+   detail, the display override) sit on a second, quieter line so the row
+   that matters — when, what, which lane — stays one glance wide. */
+.week-dialog{width:min(760px,94vw);max-height:85vh;overflow-y:auto;
+  margin:auto;padding:0;border:none;border-radius:var(--radius-card);
+  background:var(--color-bg);box-shadow:var(--shadow-lg)}
+.week-dialog::backdrop{background:rgba(32,30,29,.45)}
+.week-dialog>h2{font-size:22px;margin:0;padding:var(--space-6) var(--space-6) 0}
+.wk-intro{margin:6px 0 0;padding:0 var(--space-6);font-size:12.5px;color:var(--text-muted)}
+.week-dialog input,.week-dialog select{width:100%;padding:8px 12px;font-size:13.5px;
+  color:var(--color-text);background:var(--color-surface);
+  border:1px solid var(--edge);border-radius:var(--radius-sm)}
+.week-dialog input::placeholder{color:var(--text-muted)}
+.week-dialog button{border:1px solid var(--color-divider);background:transparent;
+  color:var(--color-text);border-radius:var(--radius-pill);
+  padding:6px 14px;font-size:12.5px;white-space:nowrap}
+.week-dialog button:hover{background:var(--color-neutral-200)}
+.week-dialog button:disabled{opacity:.4;cursor:default}
+.week-dialog button:disabled:hover{background:transparent}
+
+.wk-general{padding:0 var(--space-6)}
+.wk-general-error{margin:var(--space-3) 0 0;font-size:13px;color:var(--warn)}
+
+.wk-days{padding:var(--space-4) var(--space-6) var(--space-6)}
+.wk-day{padding:var(--space-4) 0;border-top:1px solid var(--color-divider)}
+.wk-day-head h3{margin:0 0 var(--space-3);font-size:13px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--color-accent-700)}
+.wk-day-empty{margin:0 0 var(--space-3);font-size:13.5px;color:var(--text-muted)}
+
+.wk-block{padding:var(--space-3);margin-bottom:var(--space-2);
+  background:var(--color-surface);border-radius:var(--radius-sm)}
+.wk-line{display:grid;gap:var(--space-2);align-items:end}
+/* Label, lane, then the two times in the same narrow column the panels give
+   them, then the one destructive control — kept last so it is never the
+   thing a hurried finger lands on first. */
+.wk-line-main{grid-template-columns:minmax(0,2fr) minmax(0,1.1fr) 96px 96px auto}
+.wk-line-more{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:var(--space-2)}
+.wk-field{display:block;min-width:0}
+.wk-field>span{display:block;margin-bottom:4px;font-size:11px;letter-spacing:.03em;
+  text-transform:uppercase;color:var(--text-muted)}
+.wk-line-more .wk-field>span{text-transform:none;letter-spacing:0;font-size:11.5px}
+.wk-line-more input{font-size:12.5px;padding:6px 10px}
+.wk-add{margin-top:var(--space-2)}
+
+/* Delete is the only control in the dialog that destroys something, and it
+   inherited the same neutral pill as Add block and Close — placement was
+   doing all the work of distinguishing it. It carries --warn at rest (7.75
+   on .wk-block's --color-surface, the same ratio the token is documented at)
+   and commits to the accent fill only on hover or keyboard focus (8.37 on
+   --color-accent-200, computed, not guessed). Restrained at rest on purpose:
+   a row of seven blocks each shouting a red button would read as an error
+   state rather than as an ordinary editor. Close stays neutral because it
+   destroys nothing unasked: its two-press dirty guard, which Escape routes
+   through as well, says what is about to be lost before it goes. */
+.wk-del{color:var(--warn)}
+.wk-del:hover,.wk-del:focus-visible{background:var(--color-accent-200);
+  border-color:var(--warn)}
+
+/* Muted, because it states a fact about the field rather than a problem with
+   the data — unlike the error list under it, which is the validator refusing
+   to store what is there. */
+.wk-block-note:empty,.wk-block-errors:empty{display:none}
+.wk-block-note{margin:var(--space-2) 0 0;font-size:12px;color:var(--text-muted)}
+.wk-block-errors{margin:var(--space-2) 0 0;padding-left:18px;font-size:12px;color:var(--warn)}
+.wk-refusal{margin:var(--space-4) 0 0;font-size:14px;color:var(--warn)}
+.wk-refusal-hint{margin:var(--space-2) 0 0;font-size:13px;color:var(--text-muted)}
+
+/* Sticky, because the dialog is seven days long. A Save button that scrolls
+   away takes the line explaining why the last save was refused with it. */
+.wk-actions{position:sticky;bottom:0;display:flex;flex-wrap:wrap;align-items:center;
+  gap:var(--space-2);padding:var(--space-3) var(--space-6);
+  border-top:1px solid var(--color-divider);background:var(--color-bg)}
+.wk-status{flex:1 1 200px;margin:0;font-size:12.5px;min-height:1.2em;color:var(--text-muted)}
+.wk-status.wk-warn{color:var(--warn)}
+.wk-status.wk-ok{color:var(--ok)}
+.wk-save-btn{border-color:transparent;background:var(--fill-strong);color:var(--fill-strong-ink)}
+.wk-save-btn:hover{background:var(--fill-strong-hover)}
+
 /* --- 5 · Response -------------------------------------------------------- */
 /* The design exposes a `stack` prop for the hero; this is that, on a query. */
 @media (max-width:840px){
@@ -585,6 +677,12 @@ footer p{margin:0;font-size:12.5px;color:var(--text-muted)}
 }
 @media (max-width:560px){
   .wrap{padding-left:var(--space-3);padding-right:var(--space-3)}
+  /* One field per line rather than a five-column grid squeezed to nothing —
+     a 96px time column is the right shape beside a label, and the wrong one
+     when the label itself is 96px wide. */
+  .wk-line-main,.wk-line-more{grid-template-columns:1fr}
+  .wk-days{padding-left:var(--space-4);padding-right:var(--space-4)}
+  .week-dialog>h2,.wk-intro,.wk-general,.wk-actions{padding-left:var(--space-4);padding-right:var(--space-4)}
   .streak-card,.panel{padding:var(--space-4)}
   .rule,.week-stat{padding:var(--space-4)}
   .row{grid-template-columns:72px 1fr;gap:var(--space-3);padding:var(--space-2)}

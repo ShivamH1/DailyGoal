@@ -7,6 +7,7 @@ import { clearableDates, computeStreak, growthVals, mergeProgress, toCSV, weekly
 import { pull, push, isConfigured, isAuthError, pullDoc, pushDoc } from './sync.js';
 import { defaultProfile, normalizeProfile, mergeDoc } from './profile.js';
 import { mountProfileEditor } from './profileEditor.js';
+import { mountWeekEditor, laneDisplayName } from './weekEditor.js';
 import { DAY_KEYS, istDateISO, istNow, resolveNow, emptyWeek, formatTime, gateWeek, laneVarFor } from './schedule.js';
 import { nextDeadline, formatDates } from './deadlines.js';
 import {
@@ -562,21 +563,59 @@ function commitSchedule() {
 }
 
 /* ---------- profile editor ---------- */
-/* getLaneUsage(laneKey) always hands back an empty set: there is no
-   user-editable schedule to check against yet (this task renders the week;
-   it does not yet let anyone edit its blocks). profileEditor.js's own
-   delete guard is written and tested against a non-empty one anyway, so a
-   later task only has to swap this function for one backed by the real
-   schedule — e.g. (laneKey) => new Set(DAY_KEYS.filter((k) =>
-   (week[k]?.blocks || []).some((b) => b.lane === laneKey)).map((k) =>
-   week[k]?.title || k)) — without profileEditor.js changing at all. The
-   name describes the contract (day names a lane is used on, not lane keys),
-   but a name is documentation, not enforcement — profileEditor.js's own
-   assertLaneUsageIsWired structurally verifies any getLaneUsage it is
-   handed actually respects the key it's given (returns empty for a key
-   that cannot exist) before trusting its answer for a real one, so a
-   mismatched stand-in fails loudly on first use instead of silently
-   refusing every deletion forever. */
+/* getLaneUsage(laneKey) now has a real source: there is a user-editable
+   schedule to check against, so deleting a lane some day still points at is
+   refused, naming the days that use it.
+
+   It reads the RAW STORED DOCUMENT, scheduleDoc.value, and not the `week`
+   that is on screen. Those are the same object whenever the stored week is
+   readable — gateWeek hands back doc.value by identity — and they differ in
+   exactly the state this guard matters most in: while weekIsFallback is up,
+   `week` is emptyWeek(), so every lane would report zero usage and every
+   lane would be deletable. That fails OPEN, and it fails open in the worst
+   possible place — a user whose stored week already cannot be read would be
+   free to delete the very lanes that week points at, which are the only
+   lanes that can make it readable again. The lockout would then be
+   permanent. The stored document is the thing deletion can strand, so the
+   stored document is the thing that gets consulted.
+
+   Day NAMES, not lane keys — a set of lane keys cannot name a day, and the
+   refusal profileEditor.js writes reads 'Still used by …'. dayNameIn() is
+   the same title-then-DAY_NAMES fallback renderDay uses for the panel
+   heading, so the sentence and the panel can never call one day two
+   different things. Nothing in this app edits a day title today, so in
+   practice it is DAY_NAMES that answers; the title branch is kept because a
+   stored document may legitimately carry one (validateWeek permits it) and
+   renderDay would then be showing it.
+
+   scheduleDoc is read fresh inside the closure on every call rather than
+   captured: it is reassigned wholesale on cold load, by every commit, and by
+   the sync merge — which is to say after every single thing that can reach
+   this guard.
+
+   profileEditor.js does not take the name on trust. assertLaneUsageIsWired
+   calls this with a sentinel object first: no string a block's lane can hold
+   is ever === to an object reference, so a correct implementation must come
+   back empty, and one that ignores its argument is caught before its answer
+   about a real lane is believed. It also requires an actual Set (instanceof,
+   not Set-shaped), because `.size` on an Array reads back undefined and
+   would fail OPEN — deleting a lane that is genuinely still in use. */
+function dayNameIn(source, dayKey) {
+  const title = source?.[dayKey]?.title;
+  return (typeof title === 'string' && title) || DAY_NAMES[dayKey];
+}
+
+function laneUsage(laneKey) {
+  const stored = scheduleDoc?.value;
+  return new Set(
+    DAY_KEYS
+      .filter((k) => {
+        const blocks = stored?.[k]?.blocks;
+        return Array.isArray(blocks) && blocks.some((b) => b?.lane === laneKey);
+      })
+      .map((k) => dayNameIn(stored, k)),
+  );
+}
 function reservedTickKeys() {
   /* Every key that appears in any stored day's extras bag, so an extra
      tick's key is never handed to a newly invented one — see profileEditor.js's
@@ -593,9 +632,75 @@ function reservedTickKeys() {
 mountProfileEditor({
   root: document.getElementById('profileEditorRoot'),
   getProfile: () => profile,
-  getLaneUsage: () => new Set(),
+  getLaneUsage: laneUsage,
   getReservedTickKeys: reservedTickKeys,
   onChange: (next) => { profile = next; commitProfile(); },
+});
+
+/* ---------- week editor ---------- */
+/* Both getters read the live module variables on every call rather than
+   closing over a snapshot, for the same reason as the lane guard above:
+   regateWeek() reassigns `week` wholesale, and `profile` is replaced whole
+   by every profile commit and by the sync merge.
+
+   getSaveRefusal is what stops the editor being a trap. While weekIsFallback
+   is up, commitSchedule refuses every save — the stored week could not be
+   read and is being preserved rather than overwritten — so an editor that
+   let someone build a week and only then refused it would waste the work and
+   explain nothing. The editor asks first, and shows this instead of a form.
+
+   onChange returns commitSchedule's own answer, unaltered. `week` has to be
+   assigned before the call because commitSchedule stamps and stores the
+   module variable, not an argument — and has to be put back when the refusal
+   fired, because that path writes nothing and renders nothing: leaving the
+   unsaved edit in `week` would let the 60-second NOW tick start describing a
+   block that is stored nowhere. The other false — the local write failed —
+   is not undone, because by then scheduleDoc has been stamped with it, the
+   flush is armed and the panels are rendered from it; that edit is real and
+   on its way to the server, it just did not make it into this device's
+   cache. The two are told apart by weekIsFallback itself, which is the exact
+   condition commitSchedule's early return tests. */
+mountWeekEditor({
+  root: document.getElementById('weekEditorRoot'),
+  getWeek: () => week,
+  getLanes: () => profile.lanes,
+  getSaveRefusal: () => (weekIsFallback
+    ? 'Your stored week could not be read, so it is being kept exactly as it is rather than overwritten.'
+    : null),
+  onChange: (next) => {
+    const previous = week;
+    week = next;
+    const saved = commitSchedule();
+    if (!saved && weekIsFallback) week = previous;
+    return saved;
+  },
+  /* The raw envelope, for the same reason the lane guard above reads it:
+     while the gate is refusing, `week` is a blank stand-in that has forgotten
+     which lanes the user's real week points at, and those keys are the whole
+     content of the recovery. */
+  getStoredWeek: () => scheduleDoc?.value ?? null,
+  /* The recovery the editor's refusal used to only describe. profileEditor's
+     newLaneKey can only ever invent lane1, lane2, … and no field anywhere
+     accepts a lane key, so a stored week pointing at 'study' could not be
+     rescued by any sequence of clicks a user could make. This creates the
+     lanes with the exact keys the stored document names.
+
+     Through normalizeProfile and commitProfile, not by assigning
+     profile.lanes: commitProfile is what re-runs the gate, and without that
+     re-gate the flag stays up, the week stays blank and the editor would
+     refuse a document that had just become readable — the exact staleness
+     regateWeek's own comment exists about. It reports nothing back; the
+     editor re-asks getSaveRefusal(), so the gate remains the single voice on
+     whether the week is readable. */
+  onRestoreLanes: (keys) => {
+    const known = new Set(profile.lanes.map((l) => l.key));
+    const added = (keys || [])
+      .filter((k) => typeof k === 'string' && k && !known.has(k))
+      .map((k) => ({ key: k, name: laneDisplayName(k) }));
+    if (!added.length) return;
+    profile = normalizeProfile({ ...profile, lanes: [...profile.lanes, ...added] });
+    commitProfile();
+  },
 });
 
 /* ---------- remote sync ---------- */
