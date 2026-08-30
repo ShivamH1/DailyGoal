@@ -176,3 +176,14 @@ test('tickLabel names an unnamed tick by position instead of leaving it blank', 
   assert.equal(tickLabel({ key: 'z', label: 'Sleep by 11' }, 2), 'Sleep by 11');
   assert.equal(tickLabel(undefined, 2), 'Habit 3');
 });
+
+test('a commitment\'s days come back deduped, in the week\'s own order', () => {
+  /* {days: ['mon','mon','sun']} survived normalization intact, so the same
+     day could be stored twice and downstream consumers (the generator in
+     the next project reads this) would count it twice. Canonical form:
+     each known day once, ordered as DAY_KEYS orders the week. */
+  const p = normalizeProfile({ intent: { busy: [
+    { label: 'Gym', days: ['sun', 'mon', 'mon', 'wed', 'sun'], start: 540, end: 600 },
+  ] } });
+  assert.deepEqual(p.intent.busy[0].days, ['mon', 'wed', 'sun']);
+});

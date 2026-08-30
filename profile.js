@@ -53,8 +53,13 @@ function normalizeIntent(raw) {
   for (const b of Array.isArray(i.busy) ? i.busy : []) {
     const label = str(b?.label);
     /* Unknown day keys are dropped rather than failing the whole entry: a
-       commitment naming six real days and one typo is still six real days. */
-    const days = (Array.isArray(b?.days) ? b.days : []).filter((d) => DAY_KEYS.includes(d));
+       commitment naming six real days and one typo is still six real days.
+       Filtering DAY_KEYS against the input (not the input against DAY_KEYS)
+       also collapses duplicates and puts the days in the week's own order —
+       the one canonical form, so ['mon','mon','sun'] and ['sun','mon'] both
+       store as the same commitment. */
+    const raw = Array.isArray(b?.days) ? b.days : [];
+    const days = DAY_KEYS.filter((d) => raw.includes(d));
     const start = minuteOfDay(b?.start);
     const end = minuteOfDay(b?.end);
     if (!label || !days.length || start === null || end === null || end <= start) continue;
