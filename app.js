@@ -1255,21 +1255,29 @@ document.getElementById('exportCsv').addEventListener('click', () => {
 });
 
 /* ---------- first-run setup ---------- */
-/* Mounted once, after the init pull, and only for an account that has never
-   been through setup. AFTER the pull matters: a returning user signing in on
-   a second device has profile.onboarded false locally until their document
-   arrives, and mounting before that would walk them through setup they
-   already did. A pull that FAILS still ends here — a genuinely new account
-   offline has to be able to start, and Skip setup is one press away for
-   anyone the offline guess got wrong.
+/* Mounted once, and ONLY when the profile's provenance is known: the init
+   pull settled (a row arrived, or the server said there is no row), or the
+   build is unconfigured and local is all there is. A returning user signing
+   in on a second device has profile.onboarded false locally until their
+   document arrives, so mounting before the pull settles would walk them
+   through setup they already did — and worse, a pull that FAILED leaves a
+   stale near-default profile on screen, and any finish (Skip included)
+   would commit that draft with a fresh timestamp, which newer-wins mergeDoc
+   then pushes over the real profile on every device. A failed pull
+   therefore skips the offer for this launch; the app still renders and
+   ticks, and setup is offered on the next launch whose pull settles.
 
    needsOnboarding is `onboarded !== true`, never "does this profile look
    empty": someone who deliberately clears everything out must not be dragged
    back through setup on their next launch. */
 let onboardingMounted = false;
+/* True only once we know what the account's profile actually is: set by a
+   settled profile pull (row or no-row) and by the unconfigured branch, and
+   never by a pull that threw. */
+let profileProvenanceKnown = false;
 
 function mountOnboardingIfNeeded() {
-  if (onboardingMounted || !needsOnboarding(profile)) return;
+  if (!profileProvenanceKnown || onboardingMounted || !needsOnboarding(profile)) return;
   onboardingMounted = true;
   mountOnboarding({
     root: document.getElementById('onboardingRoot'),
@@ -1303,8 +1311,11 @@ function mountOnboardingIfNeeded() {
 async function initSync() {
   if (!isConfigured()) {
     describeIdle();
-    /* No remote to wait for, so "after the pull" is now. Without this a
-       build with no Supabase configuration would never offer setup at all. */
+    /* Local-only build: there is no remote profile for a commit to clobber,
+       so what is on this device IS the account's profile — provenance
+       known. Without this a build with no Supabase configuration would
+       never offer setup at all. */
+    profileProvenanceKnown = true;
     mountOnboardingIfNeeded();
     return;
   }
@@ -1332,6 +1343,11 @@ async function initSync() {
        defends `profile` from a malformed or hostile value, so nothing
        downstream ever renders the raw remote payload. */
     const remoteProfile = await pullDoc('profile');
+    /* The pull settled: remoteProfile is a row or an honest null-for-no-row,
+       and either way the merge below leaves `profile` something setup can be
+       safely offered over. This line is the only network path that may
+       unlock the wizard — a throw above skips it and the offer alike. */
+    profileProvenanceKnown = true;
     const winner = mergeDoc(profileDoc, remoteProfile);
     const remoteWon = !!winner && winner === remoteProfile;
     /* Normalise BEFORE the envelope is rebuilt, not after. mergeDoc only picks
@@ -1462,9 +1478,10 @@ async function initSync() {
      pull failed partway through. */
   renderWeekPanels();
   if (!flushing) describeIdle();
-  /* Outside the try with the render, for the same reason: whether setup is
-     needed is a question about the profile we ended up with, including the
-     one we kept because the pull failed. */
+  /* Outside the try with the render — but gated: mountOnboardingIfNeeded
+     refuses to act until the profile pull above settled, so on the failed-
+     pull path this call is a no-op by design rather than an offer of setup
+     over a profile of unknown provenance. */
   mountOnboardingIfNeeded();
 }
 

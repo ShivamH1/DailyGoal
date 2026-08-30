@@ -550,3 +550,47 @@ test('an unconfigured build stops at the gate — no app, and no setup wizard ov
   assert.equal(ctx.document.getElementById('onboardingRoot').children.length, 0, 'no wizard either');
   assert.match(ctx.document.getElementById('authError').textContent, /no Supabase configuration/);
 });
+
+test('a failed init pull mounts no wizard — provenance unknown is not "new account"', async () => {
+  /* The destructive path this closes: a returning user's second device (or
+     first device with a cold cache) boots with a stale near-default local
+     profile, the pull fails, and the wizard mounts over it anyway. One
+     press of Skip setup then commits that stale draft with a FRESH
+     timestamp, the queue pushes it, and newer-wins mergeDoc kills the real
+     profile on every device. Setup is only offered when the profile's
+     provenance is known; a failed pull just skips the offer this launch. */
+  const ctx = await boot({
+    session: {},
+    fetchImpl: async () => { throw new TypeError('Failed to fetch'); },
+  });
+  assert.equal(ctx.document.getElementById('onboardingRoot').children.length, 0,
+    'no setup over a profile the pull could not vouch for');
+  /* The app itself still runs — delayed setup, not a dead screen. */
+  assert.equal(ctx.document.getElementById('appMain').hidden, false);
+});
+
+test('a pull that settles with no profile row is known provenance — setup mounts', async () => {
+  /* pullDoc returns null for "no row", and null is load-bearing: this
+     account has never been set up anywhere, so the wizard is safe to offer
+     and Skip commits nothing that could clobber another device. */
+  const ctx = await boot({
+    session: {},
+    fetchImpl: async () => jsonResponse([]),
+  });
+  const obRoot = ctx.document.getElementById('onboardingRoot');
+  assert.equal(obRoot.children.length, 1, 'the wizard mounted after the pull settled');
+  assert.equal(obRoot.children[0].getAttribute('aria-label'), 'First-time setup');
+});
+
+test('a pulled profile that finished onboarding elsewhere mounts no wizard', async () => {
+  /* The second-device path: the row arrives, says onboarded, and the
+     account is walked through nothing. */
+  const profileRow = { data: { onboarded: true, season: 'S' }, updated_at: '2026-08-20T00:00:00.000Z' };
+  const ctx = await boot({
+    session: {},
+    fetchImpl: async (url) => (String(url).includes('user_profile')
+      ? jsonResponse([profileRow])
+      : jsonResponse([])),
+  });
+  assert.equal(ctx.document.getElementById('onboardingRoot').children.length, 0);
+});
