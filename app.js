@@ -507,7 +507,14 @@ function markUnnamedTick(btn, tick, index) {
    leaving it to whatever profileDoc.u happened to hold before. */
 function commitProfile() {
   profileDoc = { value: profile, u: new Date().toISOString() };
-  if (!saveDoc('profile', profileDoc)) setSaveStatus('⚠ not saved', 'var(--warn)');
+  /* Returned, not just shown. The onboarding wizard is the one caller that
+     must not carry on as though setup were stored when the local write
+     failed — it would unmount over an app that looks set up and is not. The
+     remote queue is still armed either way, exactly as commit() and
+     commitSchedule() do, so the edit can still reach the server; the false
+     is a statement about THIS device's cache. */
+  const saved = saveDoc('profile', profileDoc);
+  if (!saved) setSaveStatus('⚠ not saved', 'var(--warn)');
   markDocPending('profile');
   armFlush();
   renderProfile();
@@ -524,6 +531,7 @@ function commitProfile() {
      bare forEach: see its comment for why rebuilding panels without it lost
      the current-block highlight on every lane rename. */
   renderWeekPanels();
+  return saved;
 }
 
 /* Mirrors commitProfile(): stamp, write locally, queue, re-render. week
