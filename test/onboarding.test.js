@@ -367,6 +367,28 @@ test('the visible date field edits only the first date of its group, and the res
   ]);
 });
 
+test('clearing the visible date does not lose the dates it was hiding', () => {
+  /* An empty visible date must fall out of the group while the hidden
+     remainder stays — not blank the group, and not smuggle an empty string
+     into it. Two layers uphold this (the commit's filter(Boolean) and the
+     normalizer's date regex); this pins the behavior, whichever layer does
+     the work. */
+  const { root, handed } = wizard({
+    getProfile: () => ({
+      ...defaultProfile(),
+      deadlines: [{ label: 'EC-1', dates: ['2026-09-01', '2026-09-02', '2026-09-03'] }],
+    }),
+  });
+  goTo(root, 'deadlines');
+  const date = control(root, 'Deadline 1 date');
+  date.value = '';
+  date.dispatch('change');
+  button(root, 'Skip setup').dispatch('click');
+  assert.deepEqual(handed[0].deadlines, [
+    { label: 'EC-1', dates: ['2026-09-02', '2026-09-03'] },
+  ], 'the hidden remainder becomes the group');
+});
+
 test('removing a deadline row removes its whole group', () => {
   /* With the "+ N more dates — kept" note on the row, removing it is an
      informed act on the group, not just on the date that happens to show. */
