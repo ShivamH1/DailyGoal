@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setNamespace } from '../storage.js';
-import { DAY_KEYS } from '../schedule.js';
+import { DAY_KEYS, emptyWeek } from '../schedule.js';
 import { setConfigForTests } from '../auth.js';
 
 /* app.js booted for real, with no browser.
@@ -593,4 +593,38 @@ test('a pulled profile that finished onboarding elsewhere mounts no wizard', asy
       : jsonResponse([])),
   });
   assert.equal(ctx.document.getElementById('onboardingRoot').children.length, 0);
+});
+
+test('the mounted wizard refuses to remove a lane the pulled schedule still uses', async () => {
+  /* The wiring half of the lanes-step guard: app.js hands mountOnboarding
+     the same laneUsage source the profile editor gets, reading the raw
+     stored scheduleDoc. Driven end to end — a real pull delivers a week
+     whose Monday points at focus, the wizard mounts, and its lanes step
+     answers with the profile editor's own sentence. */
+  const week = emptyWeek();
+  week.mon.blocks = [{ label: 'Revision', lane: 'focus', start: 540, end: 600 }];
+  const ctx = await boot({
+    session: {},
+    fetchImpl: async (url) => (String(url).includes('user_schedule')
+      ? jsonResponse([{ week, updated_at: '2026-08-20T00:00:00.000Z' }])
+      : jsonResponse([])),
+  });
+  const obRoot = ctx.document.getElementById('onboardingRoot');
+  assert.equal(obRoot.children.length, 1, 'the wizard mounted');
+
+  drive(ctx, () => {
+    button(obRoot, 'Next').dispatch('click');                       /* basics -> rhythm */
+    control(obRoot, 'Wake time').value = '06:30';
+    control(obRoot, 'Wake time').dispatch('change');
+    control(obRoot, 'Sleep time').value = '23:00';
+    control(obRoot, 'Sleep time').dispatch('change');
+    button(obRoot, 'Next').dispatch('click');                       /* rhythm -> ticks */
+    button(obRoot, 'Next').dispatch('click');                       /* ticks -> lanes */
+    const focusRow = byClass(obRoot, 'ob-lane')[0];                 /* DEFAULT_LANES[0] is Focus */
+    button(focusRow, 'Remove').dispatch('click');
+  });
+
+  const status = findAll(obRoot, (el) => el.className.startsWith('ob-status'))[0];
+  assert.equal(status.textContent, 'Still used by Monday — remove it from the schedule first.');
+  assert.equal(byClass(obRoot, 'ob-lane').length, 5, 'the lane row is still there');
 });
