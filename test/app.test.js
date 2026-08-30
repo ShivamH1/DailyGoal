@@ -333,9 +333,9 @@ test('a lane the stored week still uses cannot be deleted — even while that we
   });
 
   const status = byClass(laneRow(ctx, 'Work'), 'pf-lane-status')[0];
-  /* 'Tuesday', not 'tue': a week built in this editor stores title: '' — no
-     day title is editable anywhere in the app — so the raw key was the only
-     branch that fallback could ever take. */
+  /* 'Tuesday', not 'tue': nothing named this day, so dayNameIn falls through
+     to DAY_NAMES. The test below is the other branch of that same fallback,
+     now that the week editor can write a day title. */
   assert.equal(status.textContent, 'Still used by Tuesday — remove it from the schedule first.');
   assert.ok(storedLaneKeys(ctx).includes('work'), 'the lane is still in the profile');
 });
@@ -363,6 +363,50 @@ test('a lane nothing points at still deletes, and one the visible week uses does
     'Still used by Monday — remove it from the schedule first.',
   );
   assert.ok(storedLaneKeys(ctx).includes('focus'));
+});
+
+test('a day the user has named is refused by that name, not by the weekday', async () => {
+  /* The loop this closes: dayNameIn has always preferred week[dayKey].title
+     over DAY_NAMES, and app.js's renderDay has always shown it as the panel
+     heading, but nothing in the app could set one — so the title branch of
+     both was unreachable in practice. Driven end to end through the real week
+     editor, the real commitSchedule and the real getLaneUsage.
+
+     Saving also runs app.js's own renderDay for real (commitSchedule ends in
+     renderWeekPanels), so the panel heading below is executed proof that a
+     title this field can produce renders without throwing — the invariant
+     validateWeek cannot enforce, because it does not type-check a day title
+     at all. */
+  const ctx = await boot();
+  drive(ctx, () => {
+    openWeekEditor(ctx);
+    addBlock(ctx, 'tue', 'Nets', 'work');
+    const name = control(daySection(ctx, 'tue'), 'Name for Tuesday');
+    name.value = 'Match day';
+    name.dispatch('blur');
+    button(weekRoot(ctx), 'Save the week').dispatch('click');
+  });
+
+  assert.equal(storedWeek(ctx).tue.title, 'Match day', 'the name reached the stored week');
+  assert.equal(
+    findAll(ctx.document.getElementById('p-tue'), (el) => el.tagName === 'H3')[0].textContent,
+    'Match day',
+    'and the day panel renders under it',
+  );
+
+  drive(ctx, () => {
+    openProfileEditor(ctx);
+    button(laneRow(ctx, 'Work'), 'Delete').dispatch('click');
+  });
+
+  assert.equal(
+    byClass(laneRow(ctx, 'Work'), 'pf-lane-status')[0].textContent,
+    'Still used by Match day — remove it from the schedule first.',
+  );
+  /* The lane row itself, not the stored profile: a refused delete commits
+     nothing at all, so there is no profile document written here to read
+     back. Still on screen is what "not deleted" looks like from here. */
+  assert.ok(laneRow(ctx, 'Work'), 'the lane was not deleted');
 });
 
 test('the refusal restores the lane it names, and the stored week comes back untouched', async () => {

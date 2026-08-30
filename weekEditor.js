@@ -1,6 +1,6 @@
 /* The week editor: a <dialog> the user opens to build the week's shape by
    hand — the blocks each day is made of, and the label, subject, detail,
-   lane and times of each one.
+   lane and times of each one, plus the optional name a day can go by.
 
    Loaded identically by the browser and by node --test, like profileEditor.js
    beside it. Every dependency arrives through mountWeekEditor's arguments
@@ -434,18 +434,27 @@ export function mountWeekEditor({
       return wrap;
     };
 
-    const textInput = (value, placeholder, ariaLabel, apply) => {
+    /* `read` is a function, not the value itself, and that is the whole point:
+       what a blur compares against has to be the draft as it stands NOW.
+       Nothing rebuilds this row on blur, so a captured value goes stale the
+       moment the first edit lands — and then typing into an empty field and
+       emptying it again compares '' to the ORIGINAL '', returns early, and
+       saves the text the user just deleted. The field reads empty on screen
+       and is not empty in the week. dayTitleField reads day.title live for
+       exactly this reason; these four fields were written before it. */
+    const textInput = (read, placeholder, ariaLabel, apply) => {
       const input = doc.createElement('input');
+      const current = () => { const v = read(); return typeof v === 'string' ? v : ''; };
       input.type = 'text';
       input.placeholder = placeholder;
       input.setAttribute('aria-label', ariaLabel);
-      input.value = typeof value === 'string' ? value : '';
+      input.value = current();
       /* blur, not input: a rebuild mid-keystroke would take the field the
          user is typing in out from under them. profileEditor.js commits on
          blur for the same reason. */
       input.addEventListener('blur', () => {
         const next = input.value.trim();
-        if (next === (typeof value === 'string' ? value : '')) return;
+        if (next === current()) return;
         apply(next);
         markDirty();
       });
@@ -521,7 +530,7 @@ export function mountWeekEditor({
     const endInput = timeInput('end');
 
     main.append(
-      field('Label', textInput(block.label, 'What is this block?', 'Block label', (v) => { block.label = v; })),
+      field('Label', textInput(() => block.label, 'What is this block?', 'Block label', (v) => { block.label = v; })),
       field('Lane', laneSelect),
       field('Start', startInput),
       field('End', endInput),
@@ -537,13 +546,13 @@ export function mountWeekEditor({
     main.appendChild(del);
 
     more.append(
-      field('Subject', textInput(block.subject, 'Optional', 'Block subject', (v) => {
+      field('Subject', textInput(() => block.subject, 'Optional', 'Block subject', (v) => {
         if (v) block.subject = v; else delete block.subject;
       })),
-      field('Detail', textInput(block.detail, 'Optional', 'Block detail', (v) => {
+      field('Detail', textInput(() => block.detail, 'Optional', 'Block detail', (v) => {
         if (v) block.detail = v; else delete block.detail;
       })),
-      field('Shown as', textInput(block.timeText, timeRangeOf(block), 'Time display override', (v) => {
+      field('Shown as', textInput(() => block.timeText, timeRangeOf(block), 'Time display override', (v) => {
         if (v) block.timeText = v; else delete block.timeText;
       })),
     );
@@ -566,6 +575,58 @@ export function mountWeekEditor({
       : 'Optional';
   }
 
+  /* ---------- a day's own name ---------- */
+  /* The only place in the app that can set week[dayKey].title, and optional
+     everywhere it is read. app.js has shown a day's title as that day's panel
+     heading, and named days by it when refusing to delete a lane they still
+     use, all along — with nothing anywhere able to write one, so until now
+     both of those could only ever take their DAY_NAMES fallback.
+
+     The heading beside this does NOT follow the title. This dialog is seven
+     sections long and the heading is the only thing saying which one you are
+     in; a Tuesday that calls itself 'Match day' there is a Tuesday nobody can
+     find. The name is what is being edited, not the label of what is being
+     edited. The placeholder carries the day's own name instead — the same
+     move as 'Shown as', which is placeheld with the range it would override
+     — so an empty field shows what the page will say rather than the word
+     'Optional', and a day with no name reads as finished rather than blank.
+
+     An emptied field DELETES the key rather than storing ''. Downstream the
+     two are indistinguishable — renderDay and getLaneUsage both fall back
+     with `|| DAY_NAMES[k]` — so the choice is about what leaves this device:
+     absent is what "this day has no name" means, it is what every other
+     optional field here does with an emptied value (block.subject, .detail,
+     .timeText), and it keeps a cleared name from travelling to every other
+     device as a change to a field that now holds nothing.
+
+     blur, not input, for the reason the block fields give. What the blur
+     compares against is draft.title read LIVE rather than a value captured
+     when the field was built: nothing re-renders this field on blur, so a
+     name typed and then cleared in one sitting would otherwise compare '' to
+     the ORIGINAL '' and return early, saving the name the user just deleted.
+
+     A stored title that is not a string is left exactly as it is unless the
+     user types over it. validateWeek permits one, renderDay filters it, and
+     rendering it as '' and then writing that back would be the editor
+     changing data by having been opened — the same rule as the unknown-lane
+     option in renderBlock. */
+  function dayTitleField(day, dayName) {
+    const wrap = el('label', 'wk-day-title');
+    const input = doc.createElement('input');
+    input.type = 'text';
+    input.placeholder = dayName;
+    input.setAttribute('aria-label', `Name for ${dayName}`);
+    input.value = typeof day.title === 'string' ? day.title : '';
+    input.addEventListener('blur', () => {
+      const next = input.value.trim();
+      if (next === (typeof day.title === 'string' ? day.title : '')) return;
+      if (next) day.title = next; else delete day.title;
+      markDirty();
+    });
+    wrap.append(el('span', '', 'Call it something?'), input);
+    return wrap;
+  }
+
   /* ---------- one day ---------- */
   function renderDay(dayKey) {
     const ref = dayRefs.get(dayKey);
@@ -575,9 +636,9 @@ export function mountWeekEditor({
     ref.rows = [];
 
     const day = draft[dayKey];
+    const dayName = DAY_LABELS[dayKey];
     const head = el('div', 'wk-day-head');
-    const title = typeof day.title === 'string' && day.title ? day.title : DAY_LABELS[dayKey];
-    head.append(el('h3', '', title));
+    head.append(el('h3', '', dayName), dayTitleField(day, dayName));
     section.appendChild(head);
 
     if (day.blocks.length) {
@@ -591,7 +652,7 @@ export function mountWeekEditor({
          it. Deleting the last block leaves this, not a day that has lost its
          blocks array — draftFromWeek guarantees the array is still there and
          still empty, which is what keeps the saved week valid. */
-      section.appendChild(el('p', 'wk-day-empty', `Nothing planned for ${title} yet.`));
+      section.appendChild(el('p', 'wk-day-empty', `Nothing planned for ${dayName} yet.`));
     }
 
     const add = el('button', 'wk-add', 'Add block');

@@ -617,9 +617,24 @@ footer p{margin:0;font-size:12.5px;color:var(--text-muted)}
 
 .wk-days{padding:var(--space-4) var(--space-6) var(--space-6)}
 .wk-day{padding:var(--space-4) 0;border-top:1px solid var(--color-divider)}
-.wk-day-head h3{margin:0 0 var(--space-3);font-size:13px;letter-spacing:.04em;
+/* space-2, not space-3: the heading and the name field under it are one
+   unit, and they have to sit closer to each other than the pair sits to the
+   blocks below. */
+.wk-day-head h3{margin:0 0 var(--space-2);font-size:13px;letter-spacing:.04em;
   text-transform:uppercase;color:var(--color-accent-700)}
 .wk-day-empty{margin:0 0 var(--space-3);font-size:13.5px;color:var(--text-muted)}
+
+/* The optional name a day can go by, under the weekday rather than instead of
+   it — the heading is the only thing in a seven-section dialog that says which
+   day you are in. Sized to a short phrase, not to the dialog: this field holds
+   'Match day', and a full-width box would read as the most important thing in
+   the section when it is the least. Muted label, no asterisk, and the day's own
+   name as the placeholder, so an empty one reads as answered. */
+.wk-day-title{display:flex;align-items:center;gap:var(--space-2);
+  margin:0 0 var(--space-3)}
+.wk-day-title>span{font-size:11.5px;color:var(--text-muted);white-space:nowrap}
+.wk-day-title input{flex:1 1 auto;min-width:0;max-width:220px;
+  font-size:12.5px;padding:6px 10px}
 
 .wk-block{padding:var(--space-3);margin-bottom:var(--space-2);
   background:var(--color-surface);border-radius:var(--radius-sm)}

@@ -226,6 +226,7 @@ const byClass = (root, cls) => findAll(root, (el) => el.className === cls);
 const button = (root, text) => findAll(root, (el) => el.tagName === 'BUTTON' && el.textContent === text)[0];
 const control = (row, aria) => findAll(row, (el) => el.getAttribute('aria-label') === aria)[0];
 const rows = (root) => byClass(root, 'wk-block');
+const daySection = (root, dayKey) => byClass(root, 'wk-day')[DAY_KEYS.indexOf(dayKey)];
 const dialogOf = (root) => findAll(root, (el) => el.tagName === 'DIALOG')[0];
 const statusOf = (root) => findAll(root, (el) => el.className.startsWith('wk-status'))[0];
 
@@ -451,6 +452,129 @@ test('a block whose lane no longer exists keeps showing that lane rather than be
   assert.match(byClass(root, 'wk-block-errors')[0].textContent, /unknown lane "gone"/);
 });
 
+/* ---------- a day's own name ---------- */
+/* week[dayKey].title has been in the data model, on the day panel's heading
+   and in the still-used-lane refusal all along, with nothing anywhere able to
+   set one — so both of those could only ever take their DAY_NAMES fallback.
+   These are the tests for the field that closes that loop. */
+
+test('a day can be given a name, and only the copy handed back carries it', () => {
+  const week = oneBlockWeek();
+  const before = JSON.parse(JSON.stringify(week));
+  const { root, handed, open } = mounted(week);
+  open();
+
+  const name = control(daySection(root, 'tue'), 'Name for Tuesday');
+  assert.equal(name.value, '', 'a day with no name opens with an empty field');
+  name.value = 'Match day';
+  name.dispatch('blur');
+  button(root, 'Save the week').dispatch('click');
+
+  /* The same copy discipline every other field in here obeys: gateWeek hands
+     back scheduleDoc.value BY IDENTITY, so a title written into the object
+     app.js is holding would already be inside the cached envelope before the
+     user ever pressed Save. */
+  assert.deepEqual(week, before, 'the week app.js holds is untouched');
+  assert.equal(handed[0].tue.title, 'Match day');
+  assert.notEqual(handed[0].tue, week.tue);
+  assert.equal(validateWeek(handed[0], ['focus', 'rest']).ok, true);
+});
+
+test('the field can only put a string in the week, which is what keeps renderDay safe', () => {
+  /* validateWeek does not type-check a day title, so Task 18's invariant —
+     anything the validator calls valid must render without throwing — is
+     held up here by the field itself. app.js's renderDay filters a non-string
+     title for the sake of documents that predate this field; the field must
+     never be able to add another one. An <input> stores whatever it is given
+     as a string (the stand-in models that, because a browser does it), and
+     .trim() of a string is a string. */
+  const { root, handed, open } = mounted({});
+  open();
+  const name = control(daySection(root, 'mon'), 'Name for Monday');
+  name.value = 7;
+  name.dispatch('blur');
+  button(root, 'Save the week').dispatch('click');
+
+  assert.equal(typeof handed[0].mon.title, 'string');
+  assert.equal(handed[0].mon.title, '7');
+});
+
+test('clearing a day name takes the key out rather than storing an empty string', () => {
+  /* '' and absent look identical on screen — renderDay and getLaneUsage both
+     fall back with `|| DAY_NAMES[k]` — and differ in what gets pushed to the
+     server and in what a diff of the stored document shows. Absent is what
+     "this day has no name" means, and it is what every other optional field
+     in this editor does with an emptied value. */
+  const week = { mon: { title: 'Match day', blocks: [] } };
+  const { root, handed, open } = mounted(week);
+  open();
+
+  const name = control(daySection(root, 'mon'), 'Name for Monday');
+  assert.equal(name.value, 'Match day', 'a stored name opens in the field');
+  name.value = '   ';
+  name.dispatch('blur');
+  button(root, 'Save the week').dispatch('click');
+
+  assert.equal('title' in handed[0].mon, false, 'no empty string left behind');
+  assert.equal(validateWeek(handed[0], ['focus']).ok, true);
+});
+
+test('a name typed and then cleared in one sitting really is cleared', () => {
+  /* The field is not re-rendered on blur, so what the next blur compares
+     against has to be the draft read live. Comparing against the value the
+     field was BUILT with would make this second blur a no-op — '' against the
+     original '' — and the name the user just deleted would be saved. */
+  const { root, handed, open } = mounted({ mon: { blocks: [] } });
+  open();
+  const name = control(daySection(root, 'mon'), 'Name for Monday');
+  name.value = 'Match day';
+  name.dispatch('blur');
+  name.value = '';
+  name.dispatch('blur');
+  button(root, 'Save the week').dispatch('click');
+
+  assert.equal('title' in handed[0].mon, false, 'the cleared name did not come back');
+});
+
+test('a named day still says which day it is', () => {
+  /* The heading does not follow the title. This dialog is seven sections
+     long, and a Tuesday whose only identifying line reads 'Match day' cannot
+     be found in it — the name is the thing being edited, not the label of the
+     thing being edited. */
+  const { root, open } = mounted({ tue: { title: 'Match day', blocks: [] } });
+  open();
+  const section = daySection(root, 'tue');
+
+  assert.equal(findAll(section, (el) => el.tagName === 'H3')[0].textContent, 'Tuesday');
+  assert.equal(control(section, 'Name for Tuesday').value, 'Match day');
+  assert.equal(byClass(section, 'wk-day-empty')[0].textContent, 'Nothing planned for Tuesday yet.');
+});
+
+test('an unnamed day offers the name the page would use instead of demanding one', () => {
+  /* Most days have no name and that is the finished state, so the empty field
+     has to read as answered rather than as blank — the same reason 'Shown as'
+     is placeheld with the range it would override. */
+  const { root, open } = mounted({});
+  open();
+  const name = control(daySection(root, 'sat'), 'Name for Saturday');
+  assert.equal(name.value, '');
+  assert.equal(name.placeholder, 'Saturday');
+});
+
+test('naming a day arms the unsaved-changes guard like any other edit', () => {
+  const { root, open } = mounted(oneBlockWeek());
+  open();
+  const name = control(daySection(root, 'tue'), 'Name for Tuesday');
+  name.value = 'Match day';
+  name.dispatch('blur');
+  assert.match(statusOf(root).textContent, /Unsaved changes/);
+
+  button(root, 'Close').dispatch('click');
+  assert.equal(dialogOf(root).open, true, 'an unsaved name is not thrown away silently');
+  button(root, 'Close').dispatch('click');
+  assert.equal(dialogOf(root).open, false);
+});
+
 /* ---------- the recovery the refusal offers ---------- */
 
 test('missingLaneKeys names exactly the lanes a stored week points at that the profile lacks', () => {
@@ -653,4 +777,25 @@ test('the failed-write message does not claim the edit is only on this screen', 
   const text = statusOf(root).textContent;
   assert.match(text, /Not saved/);
   assert.doesNotMatch(text, /only on this screen/);
+});
+
+test('a block field typed and then cleared in one sitting really is cleared', () => {
+  /* The blur guard compared each edit against the value captured when the
+     field was BUILT, and nothing rebuilds the row on blur. So typing into an
+     empty Subject and then emptying it again compared '' to the ORIGINAL '',
+     returned early, and saved the text the user had just deleted — the field
+     looked empty on screen and was not empty in the week. Every optional
+     block field could keep a value its user had explicitly removed. */
+  const { root, handed, open } = mounted(oneBlockWeek());
+  open();
+  const subject = () => control(rows(root)[0], 'Block subject');
+
+  subject().value = 'Algebra';
+  subject().dispatch('blur');
+  subject().value = '';
+  subject().dispatch('blur');
+
+  button(root, 'Save the week').dispatch('click');
+  assert.equal(handed[0].mon.blocks[0].subject, undefined,
+    'the cleared subject came back');
 });

@@ -583,10 +583,10 @@ function commitSchedule() {
    refusal profileEditor.js writes reads 'Still used by …'. dayNameIn() is
    the same title-then-DAY_NAMES fallback renderDay uses for the panel
    heading, so the sentence and the panel can never call one day two
-   different things. Nothing in this app edits a day title today, so in
-   practice it is DAY_NAMES that answers; the title branch is kept because a
-   stored document may legitimately carry one (validateWeek permits it) and
-   renderDay would then be showing it.
+   different things. The title branch is reachable: the week editor has a
+   name field on every day, so a Tuesday the user called 'Match day' is
+   refused as 'Still used by Match day' and the panel above it says the same.
+   DAY_NAMES answers for every day nobody has named, which is most of them.
 
    scheduleDoc is read fresh inside the closure on every call rather than
    captured: it is reassigned wholesale on cold load, by every commit, and by
