@@ -750,7 +750,7 @@ export function mountWeekEditor({
     setStatus('✓ Saved.', 'wk-ok');
   });
 
-  openBtn.addEventListener('click', () => {
+  function open() {
     const refusal = getSaveRefusal();
     if (refusal) renderRefused(refusal);
     else {
@@ -763,5 +763,13 @@ export function mountWeekEditor({
       renderAll();
     }
     dialog.showModal();
-  });
+  }
+
+  openBtn.addEventListener('click', open);
+
+  /* A handle, so a caller with its own reason to open this editor does not
+     have to reach back through the DOM for a button whose class is this
+     module's private business. The onboarding wizard's last step is that
+     caller: "Build my week" opens the real editor. */
+  return { open };
 }
