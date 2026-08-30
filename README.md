@@ -16,33 +16,48 @@ Then open `http://localhost:8080`. Opening `index.html` directly via `file://` w
 npm test
 ```
 
-64 tests, 0 failures, across `schedule.js`, `storage.js`, `progress.js`, `sync.js`, and `exams.js`.
+The suite runs on `node --test` alone — zero dependencies is a constraint the
+tests enforce (`package.json` declares none, and the acceptance run checks
+that stays true).
 
 ## Supabase setup
 
-The app talks to one Postgres table (`daily_progress`) directly over PostgREST — no SDK.
+The app talks to Postgres over PostgREST — no SDK. Sign-in is Google OAuth
+through Supabase Auth (PKCE in the browser, so no client secret ships).
 
-### `.env` (local, gitignored)
+### 1. Google OAuth
 
-Create a `.env` at the repo root with these three values, read by `tools/make-config.mjs`:
+- In the Google Cloud console, create an OAuth client of type **Web
+  application**, with the authorized redirect URI
+  `https://<project-ref>.supabase.co/auth/v1/callback`.
+- In Supabase → Authentication → Providers → Google: enable it and paste the
+  client ID and secret.
+- In Supabase → Authentication → URL Configuration: add **every URL the app
+  is served from** (`http://localhost:8080`, the deployed URL) to the
+  redirect allow-list. An unlisted URL is rejected without explanation —
+  this is the most common way the whole flow fails.
+
+### 2. `.env` (local, gitignored)
+
+Create a `.env` at the repo root with two values, read by
+`tools/make-config.mjs`. Either spelling of each name works — the dashboard
+uses one pair, the wider ecosystem the other:
 
 ```
-PROJECT_URL=...   # the Supabase project URL
-PUBLIC_KEY=...    # the anon / publishable key
-USER_ID=...       # uuid, matching the RLS policy in supabase/schema.sql
+PROJECT_URL=...   # or SUPABASE_URL — the project URL
+PUBLIC_KEY=...    # or SUPABASE_ANON_KEY — the anon / publishable key
 ```
 
-`.env` also holds `SECRET_KEY` (the `service_role` key, which bypasses RLS
-entirely) and `DATABASE_URL` (contains the database password). **Nothing in
-this app reads either one** — they exist only because the Supabase dashboard
-hands out all five together — and neither must ever be deployed or
-committed.
+`USER_ID` is gone: rows are keyed to `auth.uid()` and RLS checks the token,
+so a `.env` that still declares it is simply ignored. `.env` may also hold
+`SECRET_KEY` (the `service_role` key, which bypasses RLS entirely) and
+`DATABASE_URL` (contains the database password). **Nothing in this app reads
+either one** — and neither must ever be deployed or committed.
 
 ### Generating `config.js`
 
-`config.js` is generated, gitignored, and exports `SUPABASE_URL`,
-`SUPABASE_ANON_KEY`, and `USER_ID` for the browser to import. Regenerate it
-with:
+`config.js` is generated, gitignored, and exports `SUPABASE_URL` and
+`SUPABASE_ANON_KEY` for the browser to import. Regenerate it with:
 
 ```
 npm run config
@@ -52,28 +67,39 @@ See `config.example.js` for the shape of the generated file.
 
 ### Vercel
 
-In the Vercel project's environment variables, set `PROJECT_URL`,
-`PUBLIC_KEY`, and `USER_ID` (same three names as `.env`). The build command
+In the Vercel project's environment variables, set `PROJECT_URL` and
+`PUBLIC_KEY` (same names as `.env`). The build command
 (`node tools/make-config.mjs`, see `vercel.json`) generates `config.js` from
 those at deploy time. Never set `SECRET_KEY` or `DATABASE_URL` there.
 
-### Schema
+### Schema, in order
 
-`supabase/schema.sql` records the `daily_progress` table and its RLS policy
-and is **already applied** to the live project — it's kept in the repo as
-the source of truth and for rebuilding the table from scratch, not as a
-migration to run again.
+`supabase/schema.sql` is layered, and the order matters:
 
-## The no-auth trade-off
+1. **v1** — the original single-user `daily_progress` table. Already applied
+   to the live project.
+2. **v2** — additive multi-user: the `(user_id, date)` primary key,
+   `user_profile` and `user_schedule`, and per-account RLS for the
+   `authenticated` role. Must be applied before a second account can exist —
+   under the old key, two users cannot both tick today.
+3. **Phase-3 cutover** — drops the v1 policy and revokes `anon`'s table
+   access. Applied **last**, and only after any pre-account rows have been
+   migrated onto a real account (the Task 7 record at the end of the file):
+   after the revocation, orphaned rows are reachable only with the service
+   key.
 
-There is no login. The app has no auth, so the Supabase anon key ships to
-the browser by design. Row-level security is the entire security model:
-every row is pinned to a single hardcoded `USER_ID`, so the anon key can
-only ever see and write that one user's rows — but within that table,
-**anyone who has the deployed URL can read and write it**, because the key
-in the shipped bundle grants exactly that. This is acceptable only because
-it is a single-user personal tracker with nothing sensitive in it; it is not
-a pattern to reuse for anything with real stakes.
+The file is kept as the source of truth and for rebuilding from scratch; the
+guards make the v2 section safe to re-run.
+
+## The security model
+
+The app has real accounts. Row-level security grants each `authenticated`
+user exactly the rows where `user_id = auth.uid()` — a second account
+cannot read or write the first's data, and the server, not the client,
+enforces that. The anon key still ships to the browser (it has to: it is
+what lets the app start the OAuth flow and mint a session), but the anon
+key **alone grants nothing** once the phase-3 cutover has revoked the
+`anon` role's table access. A token, not a key, is what reads and writes.
 
 ## Deploy
 
