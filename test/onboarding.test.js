@@ -418,3 +418,16 @@ test('the lanes step still removes a lane nothing uses', () => {
   assert.equal(handed[0].lanes.some((l) => l.key === 'rest'), false, 'an unused lane removes');
   assert.ok(handed[0].lanes.some((l) => l.key === 'work'));
 });
+
+test('a lane renamed to blank says it is not saved yet, like the sibling lists', () => {
+  /* normalizeProfile drops a lane with no name, so blanking a name here
+     silently vanished the lane from the draft while its row stayed on
+     screen — the busy, deadline and rule lists all report that state. */
+  const { root } = wizard();
+  goTo(root, 'lanes');
+  type(root, 'Lane 1 name', '');
+  assert.match(byClass(root, 'ob-note')[0].textContent, /not saved yet/i,
+    'a blank-named lane is not silently dropped');
+  type(root, 'Lane 1 name', 'Deep work');
+  assert.equal(byClass(root, 'ob-note')[0].textContent, '', 'naming it clears the note');
+});

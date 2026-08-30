@@ -497,7 +497,19 @@ export function mountOnboarding({
 
   function renderLanes() {
     const lanes = draft.lanes.map((l) => ({ ...l }));
-    const commitLanes = () => apply('lanes', { lanes });
+    const pending = el('p', 'ob-note');
+    /* The count comes from the rows, not from comparing against
+       draft.lanes like the sibling lists do: normalizeProfile resurrects
+       all five default lanes the moment the kept list empties, so kept-
+       versus-rows arithmetic reports nonsense exactly when every row is
+       blank. A row is unsaved iff its name is blank, and that is checkable
+       directly. */
+    const commitLanes = () => {
+      apply('lanes', { lanes });
+      const missing = lanes.filter((l) => !l.name).length;
+      pending.textContent = missing === 0 ? ''
+        : `${missing} of these is not saved yet — a lane needs a name.`;
+    };
     const list = el('div', 'ob-list');
     const drawLanes = () => {
       list.textContent = '';
@@ -538,7 +550,7 @@ export function mountOnboarding({
       });
     };
     drawLanes();
-    body.append(list, addButton('Add a lane', () => {
+    body.append(list, pending, addButton('Add a lane', () => {
       const used = new Set(lanes.map((l) => l.key));
       let n = 1;
       while (used.has(`lane${n}`)) n += 1;
