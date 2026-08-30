@@ -5,7 +5,7 @@ import {
 } from './storage.js';
 import { clearableDates, computeStreak, growthVals, mergeProgress, toCSV, weeklySummary, weekStart } from './progress.js';
 import { pull, push, isConfigured, isAuthError, pullDoc, pushDoc } from './sync.js';
-import { defaultProfile, normalizeProfile, mergeDoc } from './profile.js';
+import { defaultProfile, normalizeProfile, mergeDoc, tickLabel } from './profile.js';
 import { mountProfileEditor } from './profileEditor.js';
 import { mountWeekEditor, laneDisplayName } from './weekEditor.js';
 import { DAY_KEYS, istDateISO, istNow, resolveNow, emptyWeek, formatTime, gateWeek, laneVarFor } from './schedule.js';
@@ -467,12 +467,13 @@ function renderProfile() {
     legend.appendChild(span);
   }
 
-  for (const t of profile.ticks) {
+  profile.ticks.forEach((t, i) => {
     const btn = document.getElementById(`t-${t.key}`);
-    if (!btn) continue;                       /* extras have no fixed id — renderExtraTicks() below builds and updates them */
-    btn.querySelector('.lbl').textContent = t.label;
+    if (!btn) return;                         /* extras have no fixed id — renderExtraTicks() below builds and updates them */
+    btn.querySelector('.lbl').textContent = tickLabel(t, i);
     btn.querySelector('.hint').textContent = t.hint;
-  }
+    markUnnamedTick(btn, t, i);
+  });
   renderExtraTicks();
 
   /* Deadlines are profile-derived state too — a profile pulled from another
@@ -481,6 +482,22 @@ function renderProfile() {
      this call existed, a profile pulled from another device left the
      countdown stale until reload. */
   renderDeadline();
+}
+
+/* The three core ticks map to real columns and to the streak rule, so they
+   can be renamed but never removed — which means "nobody has named this one
+   yet" is a state the button has to be able to wear. tickLabel gives it a
+   plain positional name so it is never a blank button, and this marks it as
+   nameable: a class for styles.css to draw, and a title saying where to fix
+   it. What it deliberately does NOT do is take over the tap — the button's
+   job is to tick the day, and a first-run user who has not named their
+   habits must still be able to tick them. */
+function markUnnamedTick(btn, tick, index) {
+  const unnamed = !tick.label;
+  btn.classList.toggle('unnamed', unnamed);
+  btn.title = unnamed
+    ? `${tickLabel(tick, index)} — open Edit profile to give this one a name`
+    : '';
 }
 
 /* Same shape as commit(): stamp, write locally, queue, re-render. The stamp
@@ -992,8 +1009,8 @@ function renderExtraTicks() {
       delete extraTickEls[key];
     }
   }
-  for (const t of profile.ticks) {
-    if (t.core) continue;
+  profile.ticks.forEach((t, i) => {
+    if (t.core) return;
     let btn = extraTickEls[t.key];
     if (!btn) {
       btn = document.createElement('button');
@@ -1024,9 +1041,13 @@ function renderExtraTicks() {
       container.appendChild(btn);
       extraTickEls[t.key] = btn;
     }
-    btn.querySelector('.lbl').textContent = t.label;
+    /* Through tickLabel like the core three, though normalizeProfile already
+       drops a label-less extra: one way of putting a tick's name on screen,
+       not two that could drift apart. */
+    btn.querySelector('.lbl').textContent = tickLabel(t, i);
     btn.querySelector('.hint').textContent = t.hint;
-  }
+    markUnnamedTick(btn, t, i);
+  });
 }
 
 const growthEl = document.getElementById('growthDots');
@@ -1134,9 +1155,9 @@ function renderWeek() {
   const weekStats = document.getElementById('weekStats');
   weekStats.textContent = '';
   [
-    [`${sum.study}/7`, profile.ticks[0].label, ''],
-    [`${sum.workout}/7`, profile.ticks[1].label, ' s-fit'],
-    [`${sum.sleep}/7`, profile.ticks[2].label, ' s-sleep'],
+    [`${sum.study}/7`, tickLabel(profile.ticks[0], 0), ''],
+    [`${sum.workout}/7`, tickLabel(profile.ticks[1], 1), ' s-fit'],
+    [`${sum.sleep}/7`, tickLabel(profile.ticks[2], 2), ' s-sleep'],
     [sum.bestStreak, 'Best run', ''],
   ].forEach(([n, cap, cls]) => {
     const div = document.createElement('div');

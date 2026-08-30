@@ -437,3 +437,35 @@ test('the refusal restores the lane it names, and the stored week comes back unt
   assert.ok(storedLaneKeys(ctx).includes('focus'), 'the lane was created with its stored key');
   assert.deepEqual(storedWeek(ctx), before, 'and the week itself was never rewritten');
 });
+
+test('a core tick nobody has named renders a plain name rather than a blank button', async () => {
+  /* The three core ticks ship blank now — a new account is not handed one
+     person's Study / Workout / Sleep — and they map to real columns, so they
+     can be renamed but never removed. "Named, then cleared" and "never
+     named" therefore both have to render: a nameless button is a control
+     with nothing on it, and no amount of correct data behind it makes that
+     usable. The fallback is positional and only ever on screen — the
+     document keeps the empty string, so nothing invented is stored or
+     synced. */
+  const ctx = await boot();
+  const tickBtn = ctx.document.getElementById('t-s');
+  const tickLbl = tickBtn.querySelector('.lbl');
+  const tickRow = (i) => byClass(profileRoot(ctx), 'pf-tick-row')[i];
+
+  drive(ctx, () => {
+    openProfileEditor(ctx);
+    control(tickRow(0), 'Tick label').value = 'Study hour';
+    control(tickRow(0), 'Tick label').dispatch('blur');
+  });
+  assert.equal(tickLbl.textContent, 'Study hour');
+  assert.equal(tickBtn.classList.contains('unnamed'), false);
+
+  drive(ctx, () => {
+    control(tickRow(0), 'Tick label').value = '';
+    control(tickRow(0), 'Tick label').dispatch('blur');
+  });
+  assert.equal(tickLbl.textContent, 'Habit 1', 'the button still says what it is');
+  assert.equal(tickBtn.classList.contains('unnamed'), true, 'and shows it is waiting for a name');
+  assert.match(tickBtn.title, /Edit profile/, 'which says where to fix it');
+  assert.equal(ctx.storage.read('wi:u1:profile').value.ticks[0].label, '', 'nothing invented is stored');
+});
