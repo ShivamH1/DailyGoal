@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_LANES, CORE_TICK_KEYS, defaultProfile, normalizeProfile, mergeDoc, newTickKey,
+  DEFAULT_LANES, CORE_TICK_KEYS, defaultProfile, normalizeProfile, mergeDoc, newTickKey, tickLabel,
 } from '../profile.js';
 
 test('a new profile has lanes and ticks but no words put in the user\'s mouth', () => {
@@ -122,4 +122,57 @@ test('mergeDoc returns the winning side itself, not a copy of it', () => {
   assert.equal(mergeDoc(remote, local), remote);
   assert.equal(mergeDoc(null, remote), remote);
   assert.equal(mergeDoc(local, null), local);
+});
+
+test('a new profile has an empty intent rather than no intent', () => {
+  /* The generator in the next project reads this. An absent key would make
+     every caller there write the same guard. */
+  const p = defaultProfile();
+  assert.deepEqual(p.intent, { wake: null, sleep: null, busy: [], goals: '' });
+});
+
+test('normalizeProfile keeps wake and sleep only as whole minutes in range', () => {
+  assert.equal(normalizeProfile({ intent: { wake: 390 } }).intent.wake, 390);
+  for (const bad of ['6:30', -1, 1441, 6.5, null]) {
+    assert.equal(normalizeProfile({ intent: { wake: bad } }).intent.wake, null, `accepted ${bad}`);
+  }
+});
+
+test('normalizeProfile keeps only well-formed commitments', () => {
+  const p = normalizeProfile({ intent: { busy: [
+    { label: 'Work', days: ['mon', 'nope'], start: 570, end: 1110 },
+    { label: '', days: ['tue'], start: 0, end: 60 },
+    { label: 'Bad', days: ['wed'], start: 600, end: 500 },
+  ] } });
+  assert.equal(p.intent.busy.length, 1);
+  assert.deepEqual(p.intent.busy[0].days, ['mon']);
+});
+
+test('a new account\'s three core ticks have no name at all', () => {
+  /* They used to ship as Study / Workout / Sleep, which handed every new
+     account one person's framing of what a day is for — the exact thing this
+     project set out to undo. Blank, and named by the person using it. */
+  const p = defaultProfile();
+  assert.deepEqual(p.ticks.map((t) => t.label), ['', '', '']);
+});
+
+test('normalizeProfile never invents a name for an unnamed core tick', () => {
+  /* A stored profile with a blank core label means the user has not named it
+     yet. Filling it in here would put the invented word into the document,
+     into the next push, and onto every other device as if it were theirs. */
+  const p = normalizeProfile({ ticks: [{ key: 's', label: '' }, { key: 'w', label: 'Gym' }] });
+  assert.equal(p.ticks.find((t) => t.key === 's').label, '');
+  assert.equal(p.ticks.find((t) => t.key === 'z').label, '');
+  assert.equal(p.ticks.find((t) => t.key === 'w').label, 'Gym');
+});
+
+test('tickLabel names an unnamed tick by position instead of leaving it blank', () => {
+  /* The three core ticks map to real columns and can never be deleted, so
+     "unnamed" is a state every render site has to survive: a blank button, a
+     blank scorecard caption or an empty CSV column heading are all silent
+     data problems. Positional and computed at render time — never stored. */
+  assert.equal(tickLabel({ key: 's', label: '' }, 0), 'Habit 1');
+  assert.equal(tickLabel({ key: 'w', label: '   ' }, 1), 'Habit 2');
+  assert.equal(tickLabel({ key: 'z', label: 'Sleep by 11' }, 2), 'Sleep by 11');
+  assert.equal(tickLabel(undefined, 2), 'Habit 3');
 });
