@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setNamespace } from '../storage.js';
 import { DAY_KEYS } from '../schedule.js';
+import { setConfigForTests } from '../auth.js';
 
 /* app.js booted for real, with no browser.
 
@@ -24,10 +25,18 @@ import { DAY_KEYS } from '../schedule.js';
    the real getLaneUsage, driven end to end through the two dialogs the user
    actually presses.
 
-   Module scope stops short of startApp(): the sign-in gate only calls it for
-   a stored session, and there is none here, so no timer starts and nothing
-   reaches the network. The state each test needs is therefore built the way
-   a user builds it — through the editors — rather than injected. */
+   Module scope stops short of startApp(): the sign-in gate only calls it
+   for a stored session, and most boots here store none, so no timer starts
+   and nothing reaches the network — state is built the way a user builds
+   it, through the editors. The first-run tests are the exception: they seed
+   a session and stub fetch, because the mount decision they test lives
+   inside initSync and nowhere else.
+
+   Configuration is injected, never inherited: config.js is generated and
+   gitignored, so what it holds on any machine — including a fresh checkout,
+   where it is config.example.js's placeholders — must not decide what these
+   tests exercise. Every boot states configured or not through
+   setConfigForTests; see boot(). */
 
 /* ---------- the DOM stand-in ---------- */
 function makeDom() {
@@ -166,7 +175,7 @@ let bootCount = 0;
    `scheduleDoc` and `weekIsFallback` — while its imports (storage.js,
    schedule.js, the editors) resolve to the same URLs and stay the single
    instances they are in the browser. */
-async function boot({ storageFails } = {}) {
+async function boot({ storageFails, session, fetchImpl, configured = true } = {}) {
   const document = makeDom();
   const storage = makeStorage(storageFails);
   define('document', document);
@@ -176,15 +185,47 @@ async function boot({ storageFails } = {}) {
   define('location', { href: 'https://weekly-innings.test/', origin: 'https://weekly-innings.test', pathname: '/', reload() {}, assign() {} });
   if (typeof navigator === 'undefined') define('navigator', {});
   setNamespace('u1');
+  /* auth.js and sync.js are singletons across boots (only app.js is
+     cache-busted), so the configuration the previous test set would leak
+     into this one. Every boot therefore states its own — a real-shaped
+     pair, or the placeholder shape a fresh checkout's config.example.js
+     has — which is also what makes this suite's answers identical on a
+     machine with a generated config.js and on one without. */
+  setConfigForTests(configured
+    ? { url: 'https://project-ref.test.supabase.co', key: 'test-anon-key' }
+    : { url: 'https://<project-ref>.supabase.co', key: '<placeholder>' });
+  /* A stored session makes the sign-in gate call startApp() for real, which
+     is the only route to initSync and the first-run mount decision. The far
+     future expires_at keeps accessToken from trying to refresh over the
+     network; fetchImpl is what pull/pullDoc then actually hit. */
+  if (session) {
+    storage.setItem('wi:session', JSON.stringify({
+      access_token: 'AT', refresh_token: 'RT',
+      expires_at: Date.now() + 3_600_000, user_id: 'u1', email: 'me@test',
+      ...session,
+    }));
+  }
+  if (fetchImpl) define('fetch', fetchImpl);
 
   const realSetTimeout = globalThis.setTimeout;
-  await import(`../app.js?boot=${++bootCount}`);
-  /* The module-scope sign-in check is async. Let it settle before driving
-     anything, so no render lands mid-test. */
-  await new Promise((resolve) => realSetTimeout(resolve, 0));
+  const realSetInterval = globalThis.setInterval;
+  /* startApp() arms the minute tick; a real interval would outlive the test. */
+  globalThis.setInterval = () => 0;
+  try {
+    await import(`../app.js?boot=${++bootCount}`);
+    /* The module-scope sign-in check is async — and with a session, so is the
+       whole of initSync behind it. Let both settle before driving anything,
+       so no render lands mid-test. */
+    await new Promise((resolve) => realSetTimeout(resolve, 0));
+  } finally {
+    globalThis.setInterval = realSetInterval;
+  }
 
   return { document, storage, realSetTimeout };
 }
+
+/* The minimal Response pull() and pullDoc() read: ok, status, json(). */
+const jsonResponse = (body) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) });
 
 /* armFlush() schedules flushSync, which is the network tier. Every drive
    below is synchronous, so the timer is simply never handed a real clock —
@@ -496,4 +537,16 @@ test('the calendar stat captions follow the renamed core ticks, and fall back by
     control(tickRow(0), 'Tick label').dispatch('blur');
   });
   assert.equal(stS.textContent, 'Habit 1', 'a cleared name falls back to the positional label, not to Study');
+});
+
+test('an unconfigured build stops at the gate — no app, and no setup wizard over it', async () => {
+  /* Driven with injected placeholder config, exactly what a fresh checkout
+     holds. isAuthConfigured is the FIRST gate: with no working sign-in
+     there is never a session, startApp never runs, and initSync's
+     unconfigured branch sits behind it as defence — so what an unconfigured
+     build shows is the gate's message, not the app and not the wizard. */
+  const ctx = await boot({ configured: false, session: {} });
+  assert.equal(ctx.document.getElementById('appMain').hidden, true, 'the app is not shown');
+  assert.equal(ctx.document.getElementById('onboardingRoot').children.length, 0, 'no wizard either');
+  assert.match(ctx.document.getElementById('authError').textContent, /no Supabase configuration/);
 });

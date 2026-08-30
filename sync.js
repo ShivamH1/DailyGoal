@@ -1,8 +1,12 @@
 /* The Supabase tier, spoken to directly over PostgREST. No SDK: one table,
    two verbs, and a bundle we would otherwise have to cache offline. */
 
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import { accessToken } from './auth.js';
+/* No direct config.js import: every read of the project URL and anon key
+   goes through auth.js's activeConfig, whose default IS config.js and whose
+   only other caller is the test harness — see the comment on the seam
+   itself. One source, so this module and the sign-in gate can never answer
+   "is this build configured" differently. */
+import { accessToken, activeConfig, isAuthConfigured } from './auth.js';
 
 const TABLE = 'daily_progress';
 
@@ -22,13 +26,16 @@ const deadline = () => (typeof AbortSignal?.timeout === 'function'
 export const normalizeBase = (url) =>
   String(url || '').replace(/\/+$/, '').replace(/(\/rest(\/v1)?)+$/, '');
 
-const BASE = normalizeBase(SUPABASE_URL);
+/* Read at call time: a module-scope constant would keep the URL this
+   module happened to load with, ignoring the config seam. */
+const base = () => normalizeBase(activeConfig().url);
 
-export const isConfigured = () =>
-  Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && !SUPABASE_URL.includes('<'));
+/* The same answer the sign-in gate gives, by construction — both read
+   activeConfig, so neither can act on a configuration the other denies. */
+export const isConfigured = isAuthConfigured;
 
 const headers = (token, extra = {}) => ({
-  apikey: SUPABASE_ANON_KEY,
+  apikey: activeConfig().key,
   Authorization: `Bearer ${token}`,
   'Content-Type': 'application/json',
   ...extra,
@@ -99,7 +106,7 @@ export function fromRows(rows) {
 }
 
 export async function pull(opts = {}) {
-  const res = await authedFetch(`${BASE}/rest/v1/${TABLE}?select=*`, {}, opts);
+  const res = await authedFetch(`${base()}/rest/v1/${TABLE}?select=*`, {}, opts);
   if (!res.ok) throw new Error(`pull failed: ${res.status}`);
   return fromRows(await res.json());
 }
@@ -113,7 +120,7 @@ export async function push(progress, dates, opts = {}) {
      do not send user_id, because it defaults to auth.uid() and the client has
      no business asserting whose row this is. Naming the target in the query
      string satisfies the rule without putting a uid in the body. */
-  const res = await authedFetch(`${BASE}/rest/v1/${TABLE}?on_conflict=user_id,date`, {
+  const res = await authedFetch(`${base()}/rest/v1/${TABLE}?on_conflict=user_id,date`, {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
     body,
@@ -136,7 +143,7 @@ const docSpec = (kind) => {
 
 export async function pullDoc(kind, opts = {}) {
   const { table, field } = docSpec(kind);
-  const res = await authedFetch(`${BASE}/rest/v1/${table}?select=${field},updated_at`, {}, opts);
+  const res = await authedFetch(`${base()}/rest/v1/${table}?select=${field},updated_at`, {}, opts);
   if (!res.ok) throw new Error(`pull ${kind} failed: ${res.status}`);
   const rows = await res.json();
   /* No row is not an empty document: the wizard uses the difference to decide
@@ -171,7 +178,7 @@ export async function pushDoc(kind, value, updatedAt, opts = {}) {
      auth.uid() and the client has no business asserting whose row this is.
      Naming the target in the query string satisfies the rule without putting
      a uid in the body. */
-  const res = await authedFetch(`${BASE}/rest/v1/${table}?on_conflict=user_id`, {
+  const res = await authedFetch(`${base()}/rest/v1/${table}?on_conflict=user_id`, {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify({ [field]: value, updated_at: updatedAt }),

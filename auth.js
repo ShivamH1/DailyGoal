@@ -11,6 +11,28 @@
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
+/* config.js is generated from .env and gitignored, so what it holds on any
+   machine is unknowable from this repo — a fresh checkout carries only
+   config.example.js's placeholders. Every read of the two values in this
+   module and in sync.js therefore goes through this one source, whose
+   default is exactly the static import above. In the browser it is never
+   anything else. The override has a single caller, the test harness: the
+   suite must pass on a checkout where nobody has configured anything, so a
+   test that needs a configured (or deliberately unconfigured) app states
+   that, instead of inheriting whatever this machine's generated file
+   happens to hold. The seam lives here rather than in sync.js because
+   sync.js already imports this module for accessToken, and the two "is
+   this build configured" gates must answer from the same values — a
+   sign-in gate that disagrees with the sync tier would let one of them
+   act on a configuration the other denies exists. */
+let cfg = { url: SUPABASE_URL, key: SUPABASE_ANON_KEY };
+export const activeConfig = () => cfg;
+export function setConfigForTests(next) {
+  cfg = next && typeof next === 'object'
+    ? { url: String(next.url || ''), key: String(next.key || '') }
+    : { url: SUPABASE_URL, key: SUPABASE_ANON_KEY };
+}
+
 export function base64url(bytes) {
   let s = '';
   for (const b of bytes) s += String.fromCharCode(b);
@@ -109,10 +131,13 @@ export function readVerifier(store) {
 const normalizeBase = (url) =>
   String(url || '').replace(/\/+$/, '').replace(/(\/rest(\/v1)?)+$/, '');
 
-export const AUTH_BASE = normalizeBase(SUPABASE_URL);
+/* Read at call time, through cfg — a module-scope constant here would keep
+   answering from whatever config the module loaded with, silently ignoring
+   the seam above. Nothing outside this file imports it. */
+const authBase = () => normalizeBase(cfg.url);
 
 export const isAuthConfigured = () =>
-  Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && !SUPABASE_URL.includes('<'));
+  Boolean(cfg.url && cfg.key && !cfg.url.includes('<'));
 
 export function authorizeUrl(base, { redirectTo, challenge, provider = 'google' }) {
   const q = new URLSearchParams({
@@ -137,7 +162,7 @@ export function stripAuthParams(href) {
 }
 
 export async function beginSignIn({
-  base = AUTH_BASE,
+  base = authBase(),
   redirectTo = globalThis.location?.origin + globalThis.location?.pathname,
   store,
   navigate = (u) => { globalThis.location.assign(u); },
@@ -154,8 +179,8 @@ export async function beginSignIn({
 
 export async function completeSignIn({
   href = globalThis.location?.href,
-  base = AUTH_BASE,
-  apikey = SUPABASE_ANON_KEY,
+  base = authBase(),
+  apikey = cfg.key,
   fetchImpl = globalThis.fetch,
   store,
   now = Date.now(),
@@ -211,8 +236,8 @@ async function refresh({ session, base, apikey, fetchImpl, store, now }) {
 
 export function accessToken({
   force = false,
-  base = AUTH_BASE,
-  apikey = SUPABASE_ANON_KEY,
+  base = authBase(),
+  apikey = cfg.key,
   fetchImpl = globalThis.fetch,
   store,
   now = Date.now(),
@@ -237,7 +262,7 @@ export function authView(configured, session) {
 }
 
 export async function signOut({
-  base = AUTH_BASE, apikey = SUPABASE_ANON_KEY,
+  base = authBase(), apikey = cfg.key,
   fetchImpl = globalThis.fetch, store,
 } = {}) {
   const session = loadSession(store);
