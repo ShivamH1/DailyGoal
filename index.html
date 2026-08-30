@@ -197,6 +197,15 @@
   </div>
 </div>
 
+<!-- Filled by mountOnboarding() (onboarding.js) on an account that has never
+     been through setup, and emptied again the moment setup is stored. A
+     direct child of <body>, outside .page, so the wizard's fixed overlay can
+     never be trapped inside a stacking context the decorations create.
+     Nothing here is static markup: every string inside is either asked of
+     the user or answered by them, so the wizard builds it all with
+     textContent, never innerHTML. -->
+<div id="onboardingRoot"></div>
+
 <script type="module" src="app.js"></script>
 </body>
 </html>
