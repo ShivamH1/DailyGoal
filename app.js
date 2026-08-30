@@ -10,6 +10,7 @@ import { mountProfileEditor } from './profileEditor.js';
 import { mountWeekEditor, laneDisplayName } from './weekEditor.js';
 import { DAY_KEYS, istDateISO, istNow, resolveNow, emptyWeek, formatTime, gateWeek, laneVarFor } from './schedule.js';
 import { nextDeadline, formatDates } from './deadlines.js';
+import { mountOnboarding, needsOnboarding } from './onboarding.js';
 import {
   isAuthConfigured, loadSession, completeSignIn, beginSignIn, signOut,
   stripAuthParams, authView, currentUserId,
@@ -685,7 +686,10 @@ mountProfileEditor({
    on its way to the server, it just did not make it into this device's
    cache. The two are told apart by weekIsFallback itself, which is the exact
    condition commitSchedule's early return tests. */
-mountWeekEditor({
+/* The handle is kept because the onboarding wizard's last step opens this
+   editor for real. mountWeekEditor returns undefined when its root is
+   missing, which is why the call site below tests it rather than assuming. */
+const weekEditorApi = mountWeekEditor({
   root: document.getElementById('weekEditorRoot'),
   getWeek: () => week,
   getLanes: () => profile.lanes,
@@ -1243,9 +1247,55 @@ document.getElementById('exportCsv').addEventListener('click', () => {
   download(`weekly-innings-${todayISO()}.csv`, toCSV(progress, exportTicks()), 'text/csv');
 });
 
+/* ---------- first-run setup ---------- */
+/* Mounted once, after the init pull, and only for an account that has never
+   been through setup. AFTER the pull matters: a returning user signing in on
+   a second device has profile.onboarded false locally until their document
+   arrives, and mounting before that would walk them through setup they
+   already did. A pull that FAILS still ends here — a genuinely new account
+   offline has to be able to start, and Skip setup is one press away for
+   anyone the offline guess got wrong.
+
+   needsOnboarding is `onboarded !== true`, never "does this profile look
+   empty": someone who deliberately clears everything out must not be dragged
+   back through setup on their next launch. */
+let onboardingMounted = false;
+
+function mountOnboardingIfNeeded() {
+  if (onboardingMounted || !needsOnboarding(profile)) return;
+  onboardingMounted = true;
+  mountOnboarding({
+    root: document.getElementById('onboardingRoot'),
+    getProfile: () => profile,
+    /* The same reserved-key source the profile editor uses, so a habit added
+       during setup can never inherit a deleted one's logged history. */
+    getReservedTickKeys: reservedTickKeys,
+    /* commitProfile's own answer, unaltered — the wizard treats anything
+       other than a literal true as "not saved" and stays put, so a failed
+       write never leaves someone looking at an app that claims to be set up.
+       renderProfile/renderWeekPanels are commitProfile's own doing. */
+    onDone: (next) => {
+      profile = next;
+      return commitProfile();
+    },
+    /* The week editor exists as of Task 19, so "Build my week" opens the
+       real thing rather than describing it. THIS IS THE ONE STEP PROJECT B
+       REPLACES: the generator reads profile.intent — collected by this
+       wizard and read by nothing else here — and drafts the week instead of
+       opening a blank editor. */
+    onBuildWeek: weekEditorApi ? () => weekEditorApi.open() : null,
+  });
+}
+
 /* ---------- remote sync bootstrap ---------- */
 async function initSync() {
-  if (!isConfigured()) return describeIdle();
+  if (!isConfigured()) {
+    describeIdle();
+    /* No remote to wait for, so "after the pull" is now. Without this a
+       build with no Supabase configuration would never offer setup at all. */
+    mountOnboardingIfNeeded();
+    return;
+  }
   /* The flush is not sequenced behind the pull. A pull that hangs must not
      hold the queue hostage: a hung connection is precisely the case the queue
      exists for. Trade-off: a queued row can now go out before the merge below
@@ -1400,6 +1450,10 @@ async function initSync() {
      pull failed partway through. */
   renderWeekPanels();
   if (!flushing) describeIdle();
+  /* Outside the try with the render, for the same reason: whether setup is
+     needed is a question about the profile we ended up with, including the
+     one we kept because the pull failed. */
+  mountOnboardingIfNeeded();
 }
 
 /* One tick and one visibility handler for the whole page: the day can roll
