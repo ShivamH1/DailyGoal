@@ -469,3 +469,31 @@ test('a core tick nobody has named renders a plain name rather than a blank butt
   assert.match(tickBtn.title, /Edit profile/, 'which says where to fix it');
   assert.equal(ctx.storage.read('wi:u1:profile').value.ticks[0].label, '', 'nothing invented is stored');
 });
+
+test('the calendar stat captions follow the renamed core ticks, and fall back by position', async () => {
+  /* Decision A: no render site may carry one person's framing. index.html
+     used to hardcode Study and Workout beside the two month counts, so a
+     renamed or still-unnamed core tick kept someone else's words on the
+     calendar. The captions are empty in the static HTML and rendered
+     through tickLabel by renderProfile, like the week strip already is. */
+  const ctx = await boot();
+  const stS = ctx.document.getElementById('stSLabel');
+  const stW = ctx.document.getElementById('stWLabel');
+  const tickRow = (i) => byClass(profileRoot(ctx), 'pf-tick-row')[i];
+
+  drive(ctx, () => {
+    openProfileEditor(ctx);
+    control(tickRow(0), 'Tick label').value = 'Deep work';
+    control(tickRow(0), 'Tick label').dispatch('blur');
+    control(tickRow(1), 'Tick label').value = 'Moved today';
+    control(tickRow(1), 'Tick label').dispatch('blur');
+  });
+  assert.equal(stS.textContent, 'Deep work', 'the first count is captioned by the first core tick');
+  assert.equal(stW.textContent, 'Moved today', 'the second by the second');
+
+  drive(ctx, () => {
+    control(tickRow(0), 'Tick label').value = '';
+    control(tickRow(0), 'Tick label').dispatch('blur');
+  });
+  assert.equal(stS.textContent, 'Habit 1', 'a cleared name falls back to the positional label, not to Study');
+});

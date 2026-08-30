@@ -468,6 +468,13 @@ function renderProfile() {
     legend.appendChild(span);
   }
 
+  /* The calendar's two per-tick counts (renderCalendar's cS and cW read
+     rec.s and rec.w) are captioned by the same first two core ticks the
+     week strip uses — profile-derived, so they are filled here and not in
+     renderCalendar, and never by the static HTML. */
+  document.getElementById('stSLabel').textContent = tickLabel(profile.ticks[0], 0);
+  document.getElementById('stWLabel').textContent = tickLabel(profile.ticks[1], 1);
+
   profile.ticks.forEach((t, i) => {
     const btn = document.getElementById(`t-${t.key}`);
     if (!btn) return;                         /* extras have no fixed id — renderExtraTicks() below builds and updates them */

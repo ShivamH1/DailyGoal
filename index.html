@@ -114,10 +114,15 @@
           </div>
         </div>
         <div class="cal-grid" id="calGrid"></div>
+        <!-- The two tick captions are empty here on purpose: they are the
+             user's own habit names (or tickLabel's positional fallback) and
+             renderProfile fills them at boot, before the app is shown.
+             Static HTML must not carry a name — that was one person's
+             Study / Workout framing baked into every account's calendar. -->
         <p class="cal-stats">
           <span>Complete <b id="stFull">0</b></span>
-          <span>Study <b id="stS">0</b></span>
-          <span>Workout <b id="stW">0</b></span>
+          <span><span id="stSLabel"></span> <b id="stS">0</b></span>
+          <span><span id="stWLabel"></span> <b id="stW">0</b></span>
         </p>
       </section>
 
