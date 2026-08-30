@@ -80,6 +80,18 @@ test('rules and deadlines keep only well-formed entries', () => {
   assert.deepEqual(p.deadlines[0].dates, ['2026-08-24', '2026-08-25']);
 });
 
+test('a date appearing twice in a group is stored once', () => {
+  /* Both editors can produce the collision: the wizard by editing a group's
+     visible date to a value its hidden remainder already holds, the profile
+     editor by hand. The duplicate is invisible in both (the wizard hides the
+     remainder behind "+ N more dates"), so the normalizer is the one place
+     that can refuse it for everyone. */
+  const p = normalizeProfile({
+    deadlines: [{ label: 'EC-1', dates: ['2026-09-02', '2026-09-01', '2026-09-02'] }],
+  });
+  assert.deepEqual(p.deadlines[0].dates, ['2026-09-01', '2026-09-02']);
+});
+
 test('newTickKey never collides with an existing key', () => {
   const ticks = [{ key: 's' }, { key: 'w' }, { key: 'z' }, { key: 'k1' }];
   const k = newTickKey(ticks);

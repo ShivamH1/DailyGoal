@@ -131,8 +131,11 @@ export function normalizeProfile(raw) {
     .map((d) => ({
       label: str(d.label),
       /* Sorted here so nothing downstream has to re-sort to decide whether a
-         run of dates is contiguous. */
-      dates: d.dates.filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x)).sort(),
+         run of dates is contiguous, and deduped here because both editors can
+         produce a collision the user cannot see — the wizard hides a group's
+         remainder behind "+ N more dates", so editing its visible date onto
+         one of the hidden ones would otherwise store the day twice. */
+      dates: [...new Set(d.dates.filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x)))].sort(),
     }))
     .filter((d) => d.dates.length);
 
