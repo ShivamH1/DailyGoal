@@ -44,9 +44,19 @@ export function minutesToLabel(m) {
 
 /* Derived, never stored. A stored display string is a second source of truth
    for the same fact, and in the next project that fact comes from a language
-   model — which will eventually emit a time contradicting its own start. */
+   model — which will eventually emit a time contradicting its own start.
+
+   The typeof guard is not belt-and-braces over validateWeek's matching check
+   below: this function is also reached with weeks that predate that check —
+   whatever is already in someone's localStorage — and its result is handed
+   straight to .split(' – ') by app.js's row and banner renderers. A number
+   there throws a TypeError mid-render. An unusable override falls back to
+   the derived range rather than to '', because a range is what the block
+   actually says; the override was only ever a nicer way to say it. */
 export const formatTime = (b) =>
-  b.timeText ? b.timeText : `${minutesToLabel(b.start)} – ${minutesToLabel(b.end)}`;
+  typeof b?.timeText === 'string' && b.timeText
+    ? b.timeText
+    : `${minutesToLabel(b?.start)} – ${minutesToLabel(b?.end)}`;
 
 export function resolveNow(week, dayKey, minutes) {
   const blocks = week?.[dayKey]?.blocks || [];
@@ -122,9 +132,71 @@ export function validateWeek(week, laneKeys) {
       }
       if (!String(b?.label || '').trim()) errors.push(`${at}: needs a label`);
       if (!lanes.has(b?.lane)) errors.push(`${at}: unknown lane "${b?.lane}"`);
+      /* Optional, so undefined passes — but if it is there it is display
+         text, and the renderer splits it on ' – '. A number here used to be
+         declared valid and then throw a TypeError inside the day render,
+         which is the one failure mode this validator exists to prevent. */
+      if (b?.timeText !== undefined && typeof b.timeText !== 'string') {
+        errors.push(`${at}: timeText must be text`);
+      }
     });
   }
   /* Every problem, not the first. Fixing a generated week one error at a
      time is a guessing game. */
   return { ok: errors.length === 0, errors };
+}
+
+/* The one gate between a stored document and what actually renders. app.js
+   applied this decision in two places, character for character — once on
+   load and once after the remote merge — which is two chances for them to
+   drift apart and no way to test either.
+
+   The valid case returns doc.value ITSELF, not a copy. app.js's callers
+   compare the result against doc.value by identity to know whether they are
+   looking at the real week or at a fallback, and refuse to overwrite storage
+   when it is a fallback. A defensive copy here would make every load look
+   like a fallback and silently disable saving. */
+export function weekFromDoc(doc, laneKeys) {
+  return doc?.value && validateWeek(doc.value, laneKeys).ok ? doc.value : emptyWeek();
+}
+
+/* The whole gate decision, not just the week: what to render, AND whether
+   what we ended up rendering is the stored value itself. app.js needs both
+   halves at every gate site — the cold load, the remote merge, and again
+   whenever the lane set changes underneath a week that was already gated —
+   and re-deriving the second half by hand at each site is exactly how the
+   two original copies of this decision drifted apart.
+
+   Identity, not deep equality, is the entire test; see weekFromDoc above on
+   why the valid case must hand back doc.value rather than a copy.
+
+   isFallback is deliberately false for a document that does not exist at
+   all. "Empty because this account is new" and "empty because your stored
+   week could not be read" are different states, and only the second may
+   block a save — a brand-new account must be able to write its first week. */
+export function gateWeek(doc, laneKeys) {
+  const week = weekFromDoc(doc, laneKeys);
+  return { week, isFallback: !!doc?.value && week !== doc.value };
+}
+
+/* Which of the stylesheet's five rotation colours a lane gets, by its
+   position in the user's own profile.lanes — the key spelling never decides.
+   Returns a var() reference for an inline --lane-i, so styles.css needs no
+   per-key selector.
+
+   The modulo is load-bearing. profileEditor.js sets no upper bound on lane
+   count and styles.css defines --lane-pos-1..5 only, so a sixth lane emitted
+   --lane-pos-6: not an undefined property but an INVALID substitution, which
+   means background: var(--lane-i, var(--lane-pos-5)) does NOT fall back and
+   the dot renders with no colour. The legend already wraps modulo 5
+   (.legend span:nth-child(5n+k)), so anything else here also puts the row
+   and the legend on different colours for the same lane — and
+   position-is-the-colour is the entire contract of the scheme.
+
+   A lane the profile does not define keeps the last rotation slot rather
+   than throwing: the same tolerance validateWeek's "unknown lane" error
+   exists to flag well before rendering ever sees it. */
+export function laneVarFor(lanes, laneKey) {
+  const idx = Array.isArray(lanes) ? lanes.findIndex((l) => l?.key === laneKey) : -1;
+  return idx === -1 ? 'var(--lane-pos-5)' : `var(--lane-pos-${(idx % 5) + 1})`;
 }

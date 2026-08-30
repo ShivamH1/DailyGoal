@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DAY_KEYS, istDateISO, istNow, resolveNow, validateWeek,
-  emptyWeek, minutesToLabel, formatTime,
+  emptyWeek, minutesToLabel, formatTime, weekFromDoc, gateWeek, laneVarFor,
 } from '../schedule.js';
 
 /* A fixture, not the app's week. The app no longer has one. */
@@ -231,4 +231,163 @@ test('validateWeek reports every problem, not just the first', () => {
     { start: 100, end: 50, label: '', lane: 'nope' },
   ]) };
   assert.ok(validateWeek(w, LANES).errors.length >= 3);
+});
+
+/* ---------- the validator/renderer contract ----------
+   Everything below exists to keep one promise: anything validateWeek calls
+   valid must render without throwing. Each gap found in review was a crash
+   that reported success. */
+
+test('validateWeek rejects a timeText that is not a string', () => {
+  /* formatTime hands its result straight to .split(' – ') in app.js. A
+     number there throws a TypeError inside the day render, which in
+     startApp() takes the rest of the signed-in app down with it. The
+     validator type-checked start/end/label/lane and nothing else, so a
+     week with timeText: 930 was declared valid and then crashed. */
+  const w = { ...emptyWeek(), mon: day([{ start: 0, end: 60, label: 'x', lane: 'rest', timeText: 930 }]) };
+  const { ok, errors } = validateWeek(w, LANES);
+  assert.equal(ok, false);
+  assert.match(errors.join(' | '), /mon\[0\]/);
+  assert.match(errors.join(' | '), /timeText/i);
+});
+
+test('validateWeek still accepts a block with no timeText at all', () => {
+  /* timeText is optional — the range is derived. Rejecting its absence
+     would fail every ordinary block. */
+  const w = { ...emptyWeek(), mon: day([{ start: 0, end: 60, label: 'x', lane: 'rest' }]) };
+  assert.equal(validateWeek(w, LANES).ok, true);
+});
+
+test('formatTime never returns a non-string', () => {
+  /* The other half of the same fix: the validator is a gate, not a
+     guarantee — formatTime is also reached from the NOW banner, and a
+     document that predates the gate is still in someone's localStorage. */
+  for (const bad of [930, null, {}, [], true, () => {}]) {
+    const out = formatTime({ start: 405, end: 465, timeText: bad });
+    assert.equal(typeof out, 'string', `expected a string for timeText ${String(bad)}`);
+  }
+  /* An unusable override falls back to the derived range rather than to ''. */
+  assert.equal(formatTime({ start: 405, end: 465, timeText: 930 }), '6:45 – 7:45');
+});
+
+test('weekFromDoc falls back to an empty week for every unusable document', () => {
+  /* The gate app.js applied character-for-character in two places. Both
+     sites now call this, so there is one decision to test instead of two
+     to keep in step. */
+  for (const doc of [null, undefined, {}, { value: null }, { value: undefined }]) {
+    assert.deepEqual(weekFromDoc(doc, LANES), emptyWeek(), `expected empty for ${JSON.stringify(doc)}`);
+  }
+});
+
+test('weekFromDoc falls back to an empty week when the value fails validation', () => {
+  const bad = { ...emptyWeek(), mon: day([{ start: 100, end: 50, label: '', lane: 'nope' }]) };
+  assert.deepEqual(weekFromDoc({ value: bad, u: '2026-01-01T00:00:00.000Z' }, LANES), emptyWeek());
+});
+
+test('weekFromDoc returns the stored week itself, not a copy', () => {
+  /* Identity, not deep equality: the caller compares what it gets back
+     against doc.value to decide whether it is rendering the real week or a
+     fallback, and commitSchedule refuses to overwrite storage on the
+     strength of that answer. A defensive copy here would make every load
+     look like a fallback and silently disable saving. */
+  const good = { ...emptyWeek(), mon: day([{ start: 400, end: 500, label: 'a', lane: 'rest' }]) };
+  const doc = { value: good, u: '2026-01-01T00:00:00.000Z' };
+  assert.equal(weekFromDoc(doc, LANES), good);
+});
+
+test('weekFromDoc validates against the lanes it is given, not a fixed set', () => {
+  const w = { ...emptyWeek(), mon: day([{ start: 0, end: 60, label: 'x', lane: 'rest' }]) };
+  assert.equal(weekFromDoc({ value: w }, LANES), w);
+  assert.deepEqual(weekFromDoc({ value: w }, ['focus']), emptyWeek());
+});
+
+test('gateWeek hands back the stored week itself and does not call it a fallback', () => {
+  const good = { ...emptyWeek(), mon: day([{ start: 400, end: 500, label: 'a', lane: 'rest' }]) };
+  const doc = { value: good, u: '2026-01-01T00:00:00.000Z' };
+  const gated = gateWeek(doc, LANES);
+  assert.equal(gated.week, good);          /* identity: the real week, not a copy */
+  assert.equal(gated.isFallback, false);
+});
+
+test('gateWeek reports a fallback for a stored week it cannot read', () => {
+  const bad = { ...emptyWeek(), mon: day([{ start: 100, end: 50, label: '', lane: 'nope' }]) };
+  const gated = gateWeek({ value: bad, u: '2026-01-01T00:00:00.000Z' }, LANES);
+  assert.deepEqual(gated.week, emptyWeek());
+  assert.equal(gated.isFallback, true);
+});
+
+test('gateWeek does not call a brand-new account a fallback', () => {
+  /* "Empty because this account is new" and "empty because your stored week
+     could not be read" render identically and must not share a flag: app.js
+     refuses to save only in the second, so collapsing them would leave a new
+     account unable to write its first week. */
+  for (const doc of [null, undefined, {}, { value: null }, { value: undefined }]) {
+    const gated = gateWeek(doc, LANES);
+    assert.deepEqual(gated.week, emptyWeek(), `expected empty for ${JSON.stringify(doc)}`);
+    assert.equal(gated.isFallback, false, `expected not a fallback for ${JSON.stringify(doc)}`);
+  }
+});
+
+test('gateWeek re-answers when the lane set changes, both ways, for the same document', () => {
+  /* The bug regateWeek exists for. A week using a lane the profile does not
+     define is refused; adding that lane — the exact recovery validateWeek's
+     "unknown lane" error prompts — makes the very same stored document
+     readable, and nothing about the document changed. A gate answered once
+     and cached would keep the week blank and keep refusing to save it.
+     The reverse direction is tested too: dropping the lane again must put
+     the flag back up, so the caller stops writing a placeholder back over a
+     document that is once again unreadable. */
+  const doc = { value: { ...emptyWeek(), mon: day([{ start: 0, end: 60, label: 'x', lane: 'foo' }]) } };
+
+  const without = gateWeek(doc, LANES);
+  assert.equal(without.isFallback, true);
+  assert.deepEqual(without.week, emptyWeek());
+
+  const withFoo = gateWeek(doc, [...LANES, 'foo']);
+  assert.equal(withFoo.isFallback, false);
+  assert.equal(withFoo.week, doc.value);
+
+  assert.equal(gateWeek(doc, LANES).isFallback, true);
+});
+
+test('laneVarFor gives each lane the colour of its position in the profile', () => {
+  const lanes = [{ key: 'a' }, { key: 'b' }, { key: 'c' }, { key: 'd' }, { key: 'e' }];
+  assert.equal(laneVarFor(lanes, 'a'), 'var(--lane-pos-1)');
+  assert.equal(laneVarFor(lanes, 'c'), 'var(--lane-pos-3)');
+  assert.equal(laneVarFor(lanes, 'e'), 'var(--lane-pos-5)');
+});
+
+test('laneVarFor wraps past the fifth lane instead of naming a colour that does not exist', () => {
+  /* styles.css defines --lane-pos-1..5 and nothing more, while
+     profileEditor.js sets no upper bound on lane count. --lane-pos-6 is not
+     an undefined property, it is an INVALID substitution, so
+     background: var(--lane-i, var(--lane-pos-5)) does not fall back and the
+     dot renders with no colour at all. The legend already wraps modulo 5
+     (.legend span:nth-child(5n+k)), so the row has to wrap the same way or
+     row and legend disagree — and position-is-the-colour is the whole
+     contract of this scheme. */
+  const lanes = Array.from({ length: 12 }, (_, i) => ({ key: `l${i}` }));
+  assert.equal(laneVarFor(lanes, 'l5'), 'var(--lane-pos-1)');
+  assert.equal(laneVarFor(lanes, 'l6'), 'var(--lane-pos-2)');
+  assert.equal(laneVarFor(lanes, 'l9'), 'var(--lane-pos-5)');
+  assert.equal(laneVarFor(lanes, 'l10'), 'var(--lane-pos-1)');
+  for (let i = 0; i < 12; i++) {
+    assert.match(laneVarFor(lanes, `l${i}`), /^var\(--lane-pos-[1-5]\)$/);
+  }
+});
+
+test('laneVarFor falls back to the fifth colour for a lane the profile does not define', () => {
+  const lanes = [{ key: 'a' }, { key: 'b' }];
+  assert.equal(laneVarFor(lanes, 'gone'), 'var(--lane-pos-5)');
+  assert.equal(laneVarFor(lanes, undefined), 'var(--lane-pos-5)');
+});
+
+test('laneVarFor never throws when lanes is not an array of lane objects', () => {
+  /* Same trust-boundary reasoning as validateWeek's laneKeys guard: this is
+     handed profile.lanes, and a boundary that throws on bad input is not a
+     boundary. */
+  for (const bad of [null, undefined, {}, 5, 'lanes']) {
+    assert.equal(laneVarFor(bad, 'a'), 'var(--lane-pos-5)');
+  }
+  assert.equal(laneVarFor([null, { key: 'a' }], 'a'), 'var(--lane-pos-2)');
 });

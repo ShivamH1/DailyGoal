@@ -142,7 +142,7 @@
      can enumerate one selector per key for. These five positional aliases
      are the same five values above, just named by rotation slot instead of
      by key, so both the legend (by nth-child position) and the schedule rows
-     (by an inline --lane-i set from app.js's LANE_ORDER) can select a colour
+     (by an inline --lane-i set from schedule.js's laneVarFor) can select a colour
      without this file ever naming 'study' or 'cricket'. */
   --lane-pos-1:var(--lane-study);
   --lane-pos-2:var(--lane-work);
