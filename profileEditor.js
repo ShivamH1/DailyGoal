@@ -37,8 +37,11 @@ function newLaneKey(lanes) {
    profile.js is not in this task's file list, so newTickKey itself is left
    untouched; this walks the identical "first free k1, k2, …" sequence but
    also excludes any key `getReservedTickKeys()` reports as still present in
-   stored progress. */
-function nextTickKey(ticks, reserved) {
+   stored progress.
+
+   Exported because the onboarding wizard adds extra ticks too, and a third
+   copy of this rule is how one of the copies ends up being the old one. */
+export function nextTickKey(ticks, reserved) {
   const used = new Set((ticks || []).map((t) => t.key));
   for (let i = 1; ; i++) {
     const k = `k${i}`;
