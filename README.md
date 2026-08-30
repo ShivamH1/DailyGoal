@@ -1,6 +1,6 @@
 # Weekly Innings
 
-A cricket-scoreboard-themed habit tracker and weekly schedule for balancing a job, a part-time M.Tech, and daily fitness. It is a zero-dependency, installable PWA: today's scorecard (study, workout, sleep, and a one-line note) ticks instantly to `localStorage`, then syncs to Supabase in the background — with an offline queue so ticks made without a connection are not lost.
+A cricket-scoreboard-themed habit tracker and weekly schedule. It is a zero-dependency, installable PWA with real accounts: today's scorecard (three core habits you name yourself, extra habits, and a one-line note) ticks instantly to `localStorage`, then syncs to Supabase in the background — with an offline queue so ticks made without a connection are not lost. Habits, the week's schedule, deadlines and rules are all per-account data, set up by a first-run wizard and editable in the app.
 
 ## Local dev
 
@@ -90,17 +90,12 @@ prototype out of the deployment — but deliberately keeps `tools/`, because
 the build command (`node tools/make-config.mjs`) runs against the uploaded
 files and would fail without it.
 
-## Changing the schedule
+## Changing the schedule or deadlines
 
-`schedule.js` is the single source of truth for the week. It exports the
-`WEEK` timeline data that both the "Schedule" tabs and the NOW/NEXT banner
-render from — edit a block there and both surfaces update together.
-
-## Changing exam dates
-
-Exam windows live in `exams.js` as the `EXAMS` array (label + list of
-dates). The dates currently checked in are the real BITS WILP EC-1, EC-2,
-and EC-3 evaluation windows for 2026, not placeholders.
+There is nothing to edit in the code: the week, the habits and the deadline
+windows are all account data, created by the first-run wizard and changed in
+the app (Edit profile, and the week editor). The repo ships no one's
+schedule and no one's exam dates.
 
 ## Verify after first deploy
 
