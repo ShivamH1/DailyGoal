@@ -323,3 +323,64 @@ test('needsOnboarding asks whether setup was done, not whether the profile looks
   assert.equal(needsOnboarding(null), true);
   assert.equal(needsOnboarding({ onboarded: 'yes' }), true, 'only a real true counts');
 });
+
+test('an edit on the deadlines step never truncates an existing multi-date group', () => {
+  /* The profile editor lets one deadline group hold several dates — a
+     three-day exam is one group with three dates. This screen shows a single
+     date field per row, and its first version rebuilt every group from that
+     one visible date on ANY commit: a user who came back through setup and
+     added one unrelated deadline lost every other date in every group,
+     silently, and finish() then synced the loss to every device. */
+  const groupA = { label: 'EC-1', dates: ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05'] };
+  const groupB = { label: 'EC-2', dates: ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04'] };
+  const { root, handed } = wizard({
+    getProfile: () => ({ ...defaultProfile(), deadlines: [groupA, groupB] }),
+  });
+  goTo(root, 'deadlines');
+  button(root, 'Add a date').dispatch('click');
+  type(root, 'Deadline 3 name', 'Mock exam');
+  const date = control(root, 'Deadline 3 date');
+  date.value = '2026-11-11';
+  date.dispatch('change');
+  button(root, 'Skip setup').dispatch('click');
+  assert.deepEqual(handed[0].deadlines, [groupA, groupB, { label: 'Mock exam', dates: ['2026-11-11'] }],
+    'both untouched groups round-trip identical — every date, same order');
+});
+
+test('the visible date field edits only the first date of its group, and the rest say they are kept', () => {
+  const { root, handed } = wizard({
+    getProfile: () => ({
+      ...defaultProfile(),
+      deadlines: [{ label: 'EC-1', dates: ['2026-09-01', '2026-09-02', '2026-09-03'] }],
+    }),
+  });
+  goTo(root, 'deadlines');
+  assert.match(byClass(root, 'ob-more')[0].textContent, /\+ 2 more dates — kept/,
+    'a row that hides more dates says so');
+  const date = control(root, 'Deadline 1 date');
+  date.value = '2026-08-31';
+  date.dispatch('change');
+  button(root, 'Skip setup').dispatch('click');
+  assert.deepEqual(handed[0].deadlines, [
+    { label: 'EC-1', dates: ['2026-08-31', '2026-09-02', '2026-09-03'] },
+  ]);
+});
+
+test('removing a deadline row removes its whole group', () => {
+  /* With the "+ N more dates — kept" note on the row, removing it is an
+     informed act on the group, not just on the date that happens to show. */
+  const { root, handed } = wizard({
+    getProfile: () => ({
+      ...defaultProfile(),
+      deadlines: [
+        { label: 'EC-1', dates: ['2026-09-01', '2026-09-02'] },
+        { label: 'EC-2', dates: ['2026-10-01'] },
+      ],
+    }),
+  });
+  goTo(root, 'deadlines');
+  const firstRow = byClass(root, 'ob-deadline')[0];
+  button(firstRow, 'Remove').dispatch('click');
+  button(root, 'Skip setup').dispatch('click');
+  assert.deepEqual(handed[0].deadlines, [{ label: 'EC-2', dates: ['2026-10-01'] }]);
+});

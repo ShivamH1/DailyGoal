@@ -523,14 +523,21 @@ export function mountOnboarding({
   }
 
   function renderDeadlines() {
-    /* One date per row here, where the profile editor lets a group hold
-       several. A three-day exam is entered as three rows and merged later if
-       the user wants; asking a first-run screen to teach date groups costs
-       more than it buys. */
-    const rows = draft.deadlines.map((d) => ({ label: d.label, date: d.dates[0] || '' }));
+    /* One date field per row here, where the profile editor lets a group
+       hold several — but a row still CARRIES its whole group. The visible
+       field edits dates[0] and the remaining dates ride along untouched
+       through every commit: rebuilding groups from the visible date alone
+       is what this step first did, and any edit on the screen then silently
+       truncated every existing multi-date group to one date, with finish()
+       syncing the loss everywhere. A row whose group hides more dates says
+       so in plain text, so removing the row is an informed removal of the
+       group and not just of the date that happens to show. */
+    const rows = draft.deadlines.map((d) => ({ label: d.label, date: d.dates[0] || '', rest: d.dates.slice(1) }));
     const pending = el('p', 'ob-note');
     const commitDeadlines = () => {
-      apply('deadlines', { deadlines: rows.map((r) => ({ label: r.label, dates: r.date ? [r.date] : [] })) });
+      apply('deadlines', {
+        deadlines: rows.map((r) => ({ label: r.label, dates: [r.date, ...r.rest].filter(Boolean) })),
+      });
       const kept = draft.deadlines.length;
       pending.textContent = kept === rows.length ? ''
         : `${rows.length - kept} of these is not saved yet — each needs a name and a date.`;
@@ -557,6 +564,10 @@ export function mountOnboarding({
         date.addEventListener('change', readDate);
         dateWrap.append(date);
         rowEl.append(dateWrap);
+        if (row.rest.length) {
+          rowEl.append(el('p', 'ob-more',
+            `+ ${row.rest.length} more date${row.rest.length === 1 ? '' : 's'} — kept`));
+        }
         rowEl.append(removeButton('Remove', () => {
           rows.splice(i, 1);
           commitDeadlines();
@@ -567,7 +578,7 @@ export function mountOnboarding({
     };
     drawDeadlines();
     body.append(list, pending, addButton('Add a date', () => {
-      rows.push({ label: '', date: '' });
+      rows.push({ label: '', date: '', rest: [] });
       drawDeadlines();
     }));
   }
