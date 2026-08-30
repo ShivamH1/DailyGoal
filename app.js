@@ -1217,8 +1217,22 @@ document.getElementById('exportJson').addEventListener('click', () => {
   download(`weekly-innings-${todayISO()}.json`, JSON.stringify(progress, null, 2), 'application/json');
 });
 
+/* The extra ticks, with their COLUMN HEADINGS resolved the same way the
+   buttons on screen resolve theirs. A tick with no name would otherwise be
+   an empty column heading in a file people open in a spreadsheet, which is a
+   silent data problem rather than a visible one — and the numbering has to
+   be the profile-wide one, or the file would call a tick something the app
+   never calls it. normalizeProfile already drops a label-less extra, so this
+   is the belt to that braces; the core three keep their fixed
+   date,study,workout,sleep headings, which are a stable machine format an
+   older export has to stay comparable with, never a claim about what the
+   user named them. */
+const exportTicks = () => profile.ticks
+  .map((t, i) => ({ ...t, label: tickLabel(t, i) }))
+  .filter((t) => !t.core);
+
 document.getElementById('exportCsv').addEventListener('click', () => {
-  download(`weekly-innings-${todayISO()}.csv`, toCSV(progress, profile.ticks.filter((t) => !t.core)), 'text/csv');
+  download(`weekly-innings-${todayISO()}.csv`, toCSV(progress, exportTicks()), 'text/csv');
 });
 
 /* ---------- remote sync bootstrap ---------- */
