@@ -337,6 +337,15 @@ svg{display:block}
   font-size:20px;line-height:1.15;letter-spacing:-.015em}
 .tick .hint{margin-left:auto;font-size:12px;color:var(--text-muted)}
 /* Done.  The fill is the half that moved for contrast; the label did not. */
+/* A core tick nobody has named yet. The three map to real columns and can
+   never be deleted, so this is a state the button has to be able to wear
+   rather than an error: app.js gives it a plain positional name (Habit 1, 2,
+   3) and this says it is waiting for a real one. A dashed edge only — the
+   button's tap still ticks the day, and a first-run user who has not named
+   their habits must still be able to tick them. */
+.tick.unnamed{border-style:dashed}
+.tick.unnamed .lbl{color:var(--text-muted)}
+
 .tick.done{background:var(--fill-strong);border-color:var(--fill-strong);
   color:var(--fill-strong-ink)}
 .tick.done .mark{border-color:var(--fill-strong-ink);background:var(--fill-strong-ink)}
