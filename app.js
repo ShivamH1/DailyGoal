@@ -667,7 +667,10 @@ mountProfileEditor({
   getProfile: () => profile,
   getLaneUsage: laneUsage,
   getReservedTickKeys: reservedTickKeys,
-  onChange: (next) => { profile = next; commitProfile(); },
+  /* commitProfile's verdict is handed back, not swallowed: the dialog sits
+     over the page's own "⚠ not saved" line, so it is the one place a failed
+     local write during profile editing can still be seen. */
+  onChange: (next) => { profile = next; return commitProfile(); },
 });
 
 /* ---------- week editor ---------- */

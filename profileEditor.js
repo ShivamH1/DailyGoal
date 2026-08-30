@@ -161,13 +161,21 @@ export function mountProfileEditor({
   closeBtn.textContent = 'Done';
   closeBtn.addEventListener('click', () => dialog.close());
 
+  /* The dialog's own save line. This is a modal over the page, so the global
+     "⚠ not saved" the app writes for a failed local write is exactly where
+     the user cannot see it. Written by commit() below, and only when
+     onChange answers an exact false — see the comment there. */
+  const saveStatus = doc.createElement('p');
+  saveStatus.className = 'pf-save-status';
+  saveStatus.setAttribute('role', 'alert');
+
   const seasonSection = doc.createElement('section');
   const rulesSection = doc.createElement('section');
   const deadlinesSection = doc.createElement('section');
   const lanesSection = doc.createElement('section');
   const ticksSection = doc.createElement('section');
 
-  dialog.append(heading, seasonSection, rulesSection, deadlinesSection, lanesSection, ticksSection, closeBtn);
+  dialog.append(heading, seasonSection, rulesSection, deadlinesSection, lanesSection, ticksSection, saveStatus, closeBtn);
   root.append(openBtn, dialog);
 
   /* The working copy for the open editing session. It is deliberately NOT
@@ -246,7 +254,21 @@ export function mountProfileEditor({
 
   function commit() {
     const normalized = normalizeProfile(draft);
-    onChange(normalized);
+    /* onChange may return commitProfile's own verdict. Only an exact false
+       is treated as "the app said this did not reach the local cache":
+       app.js's commitProfile still arms the remote queue on that path, so
+       the edit is usually on its way to the server and the message claims
+       only what is true of this device — the same wording contract the
+       week editor settled on. undefined stays the legacy no-verdict
+       signature and reports nothing, unlike the week editor's Save button:
+       that is a single deliberate act that must not close on a guess, where
+       this fires on every blur of a live-committing dialog, and inventing a
+       failure for every legacy caller would cry wolf on all of them. */
+    const saved = onChange(normalized);
+    saveStatus.textContent = saved === false
+      ? 'Not saved — this device could not store that change, so a reload here may not bring '
+        + 'it back. Everything is still on this screen; try the edit again.'
+      : '';
     updateRuleStatuses(normalized);
     updateDeadlineStatuses();
     updateLaneStatuses(normalized);

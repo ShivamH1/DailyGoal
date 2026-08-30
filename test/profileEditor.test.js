@@ -497,3 +497,40 @@ test('a PRESENT getLaneUsage that returns undefined is refused loudly and does n
   assert.throws(() => buttonsNamed(laneRows[1], 'Delete')[0].dispatch('click'));
   assert.equal(changed, null, 'onChange must never fire when the usage answer cannot be trusted');
 });
+
+test('a commit the app says it could not store is reported on the dialog itself', () => {
+  /* onChange now hands back commitProfile's own result. The dialog covers
+     the page's global save line, so a failed local write during profile
+     editing was invisible: the editor said nothing while localStorage kept
+     none of it. Only an exact false means "the app said no" — see the next
+     test for the legacy shape. */
+  const root = makeRoot();
+  const profile = defaultProfile();
+  let result = false;
+  mountProfileEditor({ root, getProfile: () => profile, onChange: () => result });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+
+  const label = findAll(root, (el) => el.getAttribute('aria-label') === 'Tick label')[0];
+  label.value = 'Study hour';
+  label.dispatch('blur');
+  const status = findAll(root, (el) => el.className === 'pf-save-status')[0];
+  assert.ok(status, 'the dialog carries its own save status');
+  assert.match(status.textContent, /Not saved/);
+
+  result = true;
+  label.value = 'Deep work';
+  label.dispatch('blur');
+  assert.equal(status.textContent, '', 'a commit that saved clears the failure');
+});
+
+test('an onChange that returns nothing keeps the old contract and invents no failure', () => {
+  const root = makeRoot();
+  const profile = defaultProfile();
+  mountProfileEditor({ root, getProfile: () => profile, onChange: () => {} });
+  buttonsNamed(root, 'Edit profile')[0].dispatch('click');
+  const label = findAll(root, (el) => el.getAttribute('aria-label') === 'Tick label')[0];
+  label.value = 'Study hour';
+  label.dispatch('blur');
+  const status = findAll(root, (el) => el.className === 'pf-save-status')[0];
+  assert.equal(status ? status.textContent : '', '', 'undefined is the legacy signature, not a refusal');
+});

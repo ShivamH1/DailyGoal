@@ -628,3 +628,25 @@ test('the mounted wizard refuses to remove a lane the pulled schedule still uses
   assert.equal(status.textContent, 'Still used by Monday — remove it from the schedule first.');
   assert.equal(byClass(obRoot, 'ob-lane').length, 5, 'the lane row is still there');
 });
+
+test('a profile edit the browser could not cache is reported as not saved on the dialog', async () => {
+  /* The same contract commitSchedule already honours for the week editor,
+     now returned through the profile editor's onChange: a failed local
+     write during profile editing used to reach only the page's save line,
+     which the open dialog covers. */
+  const ctx = await boot({ storageFails: (k) => k === 'wi:u1:profile' });
+  drive(ctx, () => {
+    openProfileEditor(ctx);
+    const row = byClass(profileRoot(ctx), 'pf-tick-row')[0];
+    control(row, 'Tick label').value = 'Study hour';
+    control(row, 'Tick label').dispatch('blur');
+  });
+  const status = byClass(profileRoot(ctx), 'pf-save-status')[0];
+  assert.ok(status, 'the dialog carries a save status');
+  assert.match(status.textContent, /Not saved/);
+  assert.equal(ctx.storage.map.has('wi:u1:profile'), false, 'nothing was cached');
+  /* The queue write is a different key and it landed — the edit is still on
+     its way to the server, so the message must not claim otherwise. */
+  assert.deepEqual(ctx.storage.read('wi:u1:doc-pending'), ['profile']);
+  assert.doesNotMatch(status.textContent, /only on this screen/);
+});
