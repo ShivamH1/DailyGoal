@@ -40,7 +40,11 @@
     <section class="gate" id="authGate" hidden>
       <h2>Sign in to keep your streak</h2>
       <p>Your days, your schedule and your notes sync across every device you sign in on.</p>
-      <button class="gate-btn" id="signInBtn" type="button">Continue with Google</button>
+      <!-- The form is built by authForm.js, so it is one module that both the
+           browser and node --test drive. #authError below is the APP's line
+           (an expired session, an unconfigured build); the form keeps its own
+           for the attempt the user just made. -->
+      <div id="authFormRoot"></div>
       <p class="gate-error" id="authError" role="alert"></p>
     </section>
 

@@ -182,7 +182,16 @@ async function boot({ storageFails, session, fetchImpl, configured = true, seed 
   define('localStorage', storage);
   define('window', { addEventListener() {} });
   define('history', { replaceState() {} });
-  define('location', { href: 'https://weekly-innings.test/', origin: 'https://weekly-innings.test', pathname: '/', reload() {}, assign() {} });
+  /* reload() is counted, not ignored: signing in and signing out both END in
+     a reload — storage.js's namespace is module state read at start-up — so
+     "did it reload" is the observable that says the transition happened. */
+  const location = {
+    href: 'https://weekly-innings.test/', origin: 'https://weekly-innings.test', pathname: '/',
+    reloads: 0,
+    reload() { location.reloads += 1; },
+    assign() {},
+  };
+  define('location', location);
   if (typeof navigator === 'undefined') define('navigator', {});
   setNamespace('u1');
   /* auth.js and sync.js are singletons across boots (only app.js is
@@ -226,7 +235,7 @@ async function boot({ storageFails, session, fetchImpl, configured = true, seed 
     globalThis.setInterval = realSetInterval;
   }
 
-  return { document, storage, realSetTimeout };
+  return { document, storage, realSetTimeout, location };
 }
 
 /* The network-tier tests arm real timers — armFlush's 600 ms debounce and
@@ -1005,4 +1014,69 @@ test('a document edit made while its own push is in flight stays queued', async 
   } finally {
     timers.restore();
   }
+});
+
+/* ---------- the gate ---------- */
+
+const gateField = (ctx, label) =>
+  findAll(ctx.document.getElementById('authFormRoot'), (el) => el.getAttribute('aria-label') === label)[0];
+const gateSubmit = (ctx) =>
+  byClass(ctx.document.getElementById('authFormRoot'), 'auth-submit')[0];
+const gateError = (ctx) =>
+  byClass(ctx.document.getElementById('authFormRoot'), 'auth-error')[0];
+
+test('the gate asks for an email and a password, and offers no third party', async () => {
+  /* The project has no Google configuration and never had one enabled on
+     the live instance — a button that starts an OAuth flow the project
+     cannot complete is worse than no button. */
+  const ctx = await boot();
+  assert.ok(gateField(ctx, 'Email'), 'an email field');
+  assert.ok(gateField(ctx, 'Password'), 'a password field');
+  assert.equal(gateField(ctx, 'Password').type, 'password');
+  const gateText = collect(ctx.document.getElementById('authGate')).map((el) => el.textContent).join(' ');
+  assert.doesNotMatch(gateText, /google/i);
+});
+
+test('signing in at the gate stores the session and restarts the app', async () => {
+  /* The reload is the transition. storage.js's namespace is module state
+     read at start-up, so a sign-in that swapped views in place would leave
+     every module holding the answer for nobody. */
+  const ctx = await boot({
+    fetchImpl: async (url, opts) => {
+      assert.match(String(url), /grant_type=password/);
+      assert.deepEqual(JSON.parse(opts.body), { email: 'me@test', password: 'correct horse' });
+      return { ok: true, status: 200, json: async () => ({ access_token: 'AT', refresh_token: 'RT', expires_in: 3600, user: { id: 'u1', email: 'me@test' } }), text: async () => '' };
+    },
+  });
+  gateField(ctx, 'Email').value = 'me@test';
+  gateField(ctx, 'Password').value = 'correct horse';
+  gateSubmit(ctx).dispatch('click');
+  await new Promise((resolve) => ctx.realSetTimeout(resolve, 0));
+  assert.ok(ctx.storage.map.has('wi:session'), 'the session is stored');
+  assert.equal(ctx.location.reloads, 1, 'and the app is restarted for it');
+});
+
+test('a refused sign-in keeps the gate, says one thing, and stores nothing', async () => {
+  const ctx = await boot({
+    fetchImpl: async () => ({ ok: false, status: 400, text: async () => 'Invalid login credentials' }),
+  });
+  gateField(ctx, 'Email').value = 'me@test';
+  gateField(ctx, 'Password').value = 'wrong password';
+  gateSubmit(ctx).dispatch('click');
+  await new Promise((resolve) => ctx.realSetTimeout(resolve, 0));
+  assert.equal(ctx.storage.map.has('wi:session'), false, 'nothing was stored');
+  assert.equal(ctx.location.reloads, 0, 'and nothing was restarted');
+  assert.equal(ctx.document.getElementById('authGate').hidden, false, 'the gate is still up');
+  assert.match(gateError(ctx).textContent, /Email or password is incorrect/);
+  /* Not "no account with that email": the gate must not answer whether an
+     address is registered here. */
+  assert.doesNotMatch(gateError(ctx).textContent, /account|registered|exist/i);
+});
+
+test('an unconfigured build hides the form instead of leaving it inert', async () => {
+  /* A form that cannot possibly work is an invitation to type a password
+     into nothing. */
+  const ctx = await boot({ configured: false });
+  assert.equal(ctx.document.getElementById('authFormRoot').hidden, true);
+  assert.match(ctx.document.getElementById('authError').textContent, /no Supabase configuration/);
 });

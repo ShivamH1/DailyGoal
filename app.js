@@ -12,9 +12,10 @@ import { DAY_KEYS, istDateISO, istNow, resolveNow, emptyWeek, formatTime, gateWe
 import { nextDeadline, formatDates } from './deadlines.js';
 import { mountOnboarding, needsOnboarding } from './onboarding.js';
 import {
-  isAuthConfigured, loadSession, completeSignIn, beginSignIn, signOut,
-  stripAuthParams, authView, currentUserId,
+  isAuthConfigured, loadSession, signIn, signUp, signOut,
+  authView, currentUserId,
 } from './auth.js';
+import { mountAuthForm } from './authForm.js';
 
 /* Full weekday names, keyed the same way DAY_KEYS spells them. Used as the
    fallback heading for a day whose own title hasn't been set yet (every
@@ -1604,17 +1605,31 @@ function showView(view) {
        so there is never a second way of writing text on this page. */
     authError.textContent =
       'This build has no Supabase configuration. Run `npm run config` and reload.';
-    document.getElementById('signInBtn').hidden = true;
+    /* Hidden rather than left inert: a form that cannot possibly work is an
+       invitation to type a password into nothing. */
+    authFormRoot.hidden = true;
   }
 }
 
-document.getElementById('signInBtn').addEventListener('click', async () => {
-  authError.textContent = '';
-  try {
-    await beginSignIn({});
-  } catch (e) {
-    authError.textContent = 'Could not start sign-in. Check your connection and try again.';
-  }
+/* Signing in RELOADS rather than transitioning in place, exactly as signing
+   out does, and for the same reason: storage.js's namespace is module state
+   set from the session at start-up. The OAuth flow used to get this for free
+   — it left the page and came back — and doing it in place would mean every
+   module that read "who is this" at boot now holds the answer for nobody. */
+const authFormRoot = document.getElementById('authFormRoot');
+mountAuthForm({
+  root: authFormRoot,
+  onSignIn: async ({ email, password }) => {
+    await signIn({ email, password });
+    location.reload();
+  },
+  onSignUp: async ({ email, password }) => {
+    const result = await signUp({ email, password });
+    /* A registration that came back with a session IS a sign-in; one waiting
+       on a confirmation link is not, and the form says so instead. */
+    if (result.session) location.reload();
+    return result;
+  },
 });
 
 signOutBtn.addEventListener('click', async () => {
@@ -1627,20 +1642,14 @@ signOutBtn.addEventListener('click', async () => {
   location.reload();
 });
 
-(async () => {
-  let session = null;
-  try {
-    session = await completeSignIn({});
-    if (session) history.replaceState(null, '', stripAuthParams(location.href));
-  } catch (e) {
-    authError.textContent = 'Sign-in did not complete. Please try again.';
-    history.replaceState(null, '', stripAuthParams(location.href));
-  }
-  session = session || loadSession();
-  const view = authView(isAuthConfigured(), session);
+/* No redirect to come back from any more, so no await either: the session is
+   in storage or it is not, and the form is what makes one. This used to be
+   an async IIFE that first asked the server to finish an OAuth exchange. */
+{
+  const view = authView(isAuthConfigured(), loadSession());
   showView(view);
   if (view === 'app') startApp();
-})();
+}
 
 /* ---------- service worker ---------- */
 /* Caching the shell is useful signed out too, so registration stays here
