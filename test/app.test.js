@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setNamespace } from '../storage.js';
-import { DAY_KEYS, emptyWeek } from '../schedule.js';
+import { DAY_KEYS, emptyWeek, istDateISO } from '../schedule.js';
 import { setConfigForTests } from '../auth.js';
 
 /* app.js booted for real, with no browser.
@@ -825,6 +825,183 @@ test('a legacy bare-string flag still pushes what is stored', async () => {
     assert.ok(push, 'the queued edit went out');
     assert.equal(JSON.parse(push.body).updated_at, '2026-08-29T10:00:00.000Z');
     assert.deepEqual(ctx.storage.read('wi:u1:doc-pending'), [], 'and the queue is clear');
+  } finally {
+    timers.restore();
+  }
+});
+
+/* ---------- what the drain actually does ---------- */
+/* flushSync's composition — push, THEN clear, and only what the push
+   carried — was held by comments alone: gutting it (clear the queue without
+   pushing at all; clear unconditionally, ignoring the stamp the push was
+   made with) left the whole suite green. Every test below reaches the
+   network tier, so a drain that skips the push or clears the wrong thing
+   fails one of them. */
+
+const queuedDay = (storage, date, u) => {
+  storage.setItem('wi:u1:progress', JSON.stringify({ [date]: { s: 1, u } }));
+  storage.setItem('wi:u1:pending', JSON.stringify([date]));
+};
+
+test('a queued day is pushed, and only then cleared', async () => {
+  const timers = captureTimers();
+  try {
+    const today = istDateISO();
+    const calls = [];
+    const ctx = await boot({
+      session: {},
+      fetchImpl: recordingFetch(calls),
+      seed: (storage) => queuedDay(storage, today, '2026-08-29T10:00:00.000Z'),
+    });
+    await timers.run();
+    const [sent] = pushesTo(calls, 'daily_progress');
+    assert.ok(sent, 'the queued day went out');
+    assert.equal(JSON.parse(sent.body)[0].date, today, 'as that day');
+    assert.deepEqual(ctx.storage.read('wi:u1:pending'), [], 'and the queue is clear');
+    assert.match(ctx.document.getElementById('syncStatus').textContent, /synced/);
+  } finally {
+    timers.restore();
+  }
+});
+
+test('a push the server refuses leaves the queue exactly as it was, and retries', async () => {
+  /* Clearing here is the shape of this project's original bug: the day is
+     reported synced and is on no device's queue, while the server never
+     received it.
+
+     The tick is made AFTER boot, not seeded into it, because a cold boot's
+     own pull settles after the flush and re-describes the status line — so
+     the retry message, which is half of what this pins, would be gone by
+     the time the test could read it. */
+  const timers = captureTimers();
+  try {
+    let refuse = false;
+    const calls = [];
+    const ctx = await boot({
+      session: {},
+      fetchImpl: async (url, opts = {}) => {
+        calls.push({ url: String(url), method: opts.method || 'GET', body: opts.body });
+        if ((opts.method || 'GET') === 'POST' && refuse) return { ok: false, status: 500, text: async () => 'boom' };
+        return jsonResponse([]);
+      },
+    });
+    refuse = true;
+    const today = istDateISO();
+    ctx.document.getElementById('t-s').dispatch('click');
+    await timers.run();
+    assert.equal(pushesTo(calls, 'daily_progress').length, 1, 'it was attempted');
+    assert.deepEqual(ctx.storage.read('wi:u1:pending'), [today], 'and is still queued');
+    assert.match(ctx.document.getElementById('syncStatus').textContent, /retrying/);
+    assert.deepEqual(timers.armed.map((t) => t.ms), [1000], 'with a backoff armed');
+  } finally {
+    timers.restore();
+  }
+});
+
+test('a session the server has rejected leaves the queue for the next sign-in', async () => {
+  /* No number of retries recovers a refresh token the server rejected, so
+     this path signs out rather than backing off — and the queue is what the
+     next sign-in picks up. Clearing it here would lose the day outright. */
+  const timers = captureTimers();
+  try {
+    const today = istDateISO();
+    const calls = [];
+    const ctx = await boot({
+      session: { expires_at: Date.now() - 1000 },
+      fetchImpl: async (url, opts = {}) => {
+        calls.push({ url: String(url), method: opts.method || 'GET', body: opts.body });
+        if (String(url).includes('grant_type=refresh_token')) return { ok: false, status: 400, text: async () => 'invalid_grant' };
+        return jsonResponse([]);
+      },
+      seed: (storage) => queuedDay(storage, today, '2026-08-29T10:00:00.000Z'),
+    });
+    await timers.run();
+    assert.deepEqual(pushesTo(calls, 'daily_progress'), [], 'nothing could be sent');
+    assert.deepEqual(ctx.storage.read('wi:u1:pending'), [today], 'so the day stays queued');
+    assert.equal(ctx.document.getElementById('authGate').hidden, false, 'and the gate is shown');
+    assert.deepEqual(timers.armed.map((t) => t.ms), [], 'no backoff — retrying cannot help');
+  } finally {
+    timers.restore();
+  }
+});
+
+test('a tick made while its own day is in flight stays queued', async () => {
+  /* push() serialises its body before the await, so a tick that lands
+     mid-flight is not in what went out. Clearing the queue by the dates
+     ASKED FOR rather than by the stamps SENT drops that tick — the display
+     keeps it, this device reports synced, and it is gone on the next
+     reload. */
+  /* Stamps are ISO strings at millisecond resolution, so an edit made in the
+     same millisecond as the one being pushed carries the same stamp and is
+     indistinguishable from it. Real, and out of scope here; the mid-flight
+     edit is therefore held to a later millisecond so this test is about the
+     guard rather than about the clock. */
+  const realSetTimeout = globalThis.setTimeout;
+  const timers = captureTimers();
+  try {
+    let midFlight = null;
+    const calls = [];
+    const ctx = await boot({
+      session: {},
+      fetchImpl: async (url, opts = {}) => {
+        calls.push({ url: String(url), method: opts.method || 'GET', body: opts.body });
+        if ((opts.method || 'GET') === 'POST' && midFlight) {
+          const run = midFlight;
+          midFlight = null;
+          await new Promise((resolve) => realSetTimeout(resolve, 2));
+          run();
+        }
+        return jsonResponse([]);
+      },
+    });
+    const today = istDateISO();
+    ctx.document.getElementById('t-s').dispatch('click');
+    midFlight = () => ctx.document.getElementById('t-w').dispatch('click');
+    await timers.run();
+    assert.equal(midFlight, null, 'the mid-flight tick really happened');
+    assert.equal(pushesTo(calls, 'daily_progress').length, 1, 'one push went out');
+    assert.deepEqual(ctx.storage.read('wi:u1:pending'), [today], 'and the day it did not carry is still queued');
+  } finally {
+    timers.restore();
+  }
+});
+
+test('a document edit made while its own push is in flight stays queued', async () => {
+  /* The same trap, one document at a time: pushDoc is handed the stamp read
+     before the await, and the flag may only be cleared if the document is
+     still standing at that stamp when the push returns. */
+  const realSetTimeout = globalThis.setTimeout;   /* a later millisecond — see above */
+  const timers = captureTimers();
+  try {
+    let midFlight = null;
+    const calls = [];
+    const ctx = await boot({
+      session: {},
+      fetchImpl: async (url, opts = {}) => {
+        calls.push({ url: String(url), method: opts.method || 'GET', body: opts.body });
+        if ((opts.method || 'GET') === 'POST' && String(url).includes('user_profile') && midFlight) {
+          const run = midFlight;
+          midFlight = null;
+          await new Promise((resolve) => realSetTimeout(resolve, 2));
+          run();
+        }
+        return jsonResponse([]);
+      },
+    });
+    const row = () => byClass(profileRoot(ctx), 'pf-tick-row')[0];
+    const rename = (to) => {
+      control(row(), 'Tick label').value = to;
+      control(row(), 'Tick label').dispatch('blur');
+    };
+    openProfileEditor(ctx);
+    rename('First');
+    midFlight = () => rename('Second');
+    await timers.run();
+    assert.equal(midFlight, null, 'the mid-flight edit really happened');
+    const queued = ctx.storage.read('wi:u1:doc-pending');
+    assert.deepEqual(queued.map((m) => m.kind), ['profile'], 'the edit the push did not carry is still queued');
+    assert.equal(queued[0].u, ctx.storage.read('wi:u1:profile').u, 'under its own stamp');
+    assert.equal(ctx.storage.read('wi:u1:profile').value.ticks[0].label, 'Second');
   } finally {
     timers.restore();
   }
