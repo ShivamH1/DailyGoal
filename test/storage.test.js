@@ -244,14 +244,48 @@ test('loadDoc returns null for an account that has never saved one', () => {
   setNamespace(null);
 });
 
-test('the document queue behaves like the date queue', () => {
+test('the document queue records the stamp each write queued', () => {
+  /* Unlike a date, a kind does not identify a write — so the marker carries
+     the u stamp of the envelope it queued, and the flush can tell "this
+     write is still here to send" from a flag that has outlived it. Clearing
+     is by kind alone: whatever stamp the marker holds, clearing 'profile'
+     must leave no profile marker behind. */
   const store = fakeStore();
   setNamespace('u1');
-  markDocPending('profile', store);
-  markDocPending('profile', store);
-  markDocPending('schedule', store);
-  assert.deepEqual(loadDocPending(store).sort(), ['profile', 'schedule']);
+  markDocPending('profile', 'T1', store);
+  markDocPending('schedule', 'T2', store);
+  assert.deepEqual(
+    loadDocPending(store).sort((a, b) => a.kind.localeCompare(b.kind)),
+    [{ kind: 'profile', u: 'T1' }, { kind: 'schedule', u: 'T2' }],
+  );
   clearDocPending(['profile'], store);
-  assert.deepEqual(loadDocPending(store), ['schedule']);
+  assert.deepEqual(loadDocPending(store), [{ kind: 'schedule', u: 'T2' }]);
+  setNamespace(null);
+});
+
+test('re-marking a kind keeps one marker, carrying the newest stamp', () => {
+  /* Two edits before a flush are one queued write — the later one. A marker
+     per edit would let the flush clear or drop against the wrong stamp. */
+  const store = fakeStore();
+  setNamespace('u1');
+  markDocPending('profile', 'T1', store);
+  markDocPending('profile', 'T2', store);
+  assert.deepEqual(loadDocPending(store), [{ kind: 'profile', u: 'T2' }]);
+  setNamespace(null);
+});
+
+test('a legacy bare-string marker reads as a marker with an unknown stamp', () => {
+  /* Every build before the stamp existed wrote plain kind strings. A device
+     that queued one offline and then updated must still flush it — an
+     unknown stamp means "push what is here", never "stale". Clearing by
+     kind reaches it the same as a stamped marker. */
+  const store = fakeStore({ 'wi:u1:doc-pending': JSON.stringify(['profile', 'schedule']) });
+  setNamespace('u1');
+  assert.deepEqual(
+    loadDocPending(store).sort((a, b) => a.kind.localeCompare(b.kind)),
+    [{ kind: 'profile', u: null }, { kind: 'schedule', u: null }],
+  );
+  clearDocPending(['profile'], store);
+  assert.deepEqual(loadDocPending(store), [{ kind: 'schedule', u: null }]);
   setNamespace(null);
 });

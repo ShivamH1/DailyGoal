@@ -336,7 +336,7 @@ test('a week the browser could not cache is reported as not saved, not as saved'
   assert.equal(ctx.storage.map.has('wi:u1:schedule'), false, 'nothing was cached');
   /* And the message may not say the edit is only on this screen: the queue
      write is a different, much smaller key and it landed. */
-  assert.deepEqual(ctx.storage.read('wi:u1:doc-pending'), ['schedule']);
+  assert.deepEqual(ctx.storage.read('wi:u1:doc-pending').map((m) => m.kind), ['schedule']);
   assert.doesNotMatch(text, /only on this screen/);
 });
 
@@ -675,7 +675,7 @@ test('a profile edit the browser could not cache is reported as not saved on the
   assert.equal(ctx.storage.map.has('wi:u1:profile'), false, 'nothing was cached');
   /* The queue write is a different key and it landed — the edit is still on
      its way to the server, so the message must not claim otherwise. */
-  assert.deepEqual(ctx.storage.read('wi:u1:doc-pending'), ['profile']);
+  assert.deepEqual(ctx.storage.read('wi:u1:doc-pending').map((m) => m.kind), ['profile']);
   assert.doesNotMatch(status.textContent, /only on this screen/);
 });
 

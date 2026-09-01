@@ -844,7 +844,10 @@ async function flushSync() {
          returns null for any kind it does not know how to find, and that
          kind is skipped rather than pushed or wrongly cleared. */
       const docFor = (k) => (k === 'profile' ? profileDoc : k === 'schedule' ? scheduleDoc : null);
-      for (const k of kinds) {
+      /* The queue holds markers, not bare kinds — each carries the stamp of
+         the write that armed it. Only the kind is read here; the rule that
+         acts on the stamp lands next. */
+      for (const { kind: k } of kinds) {
         const doc = docFor(k);
         if (!doc) continue;
         /* Snapshot immediately before THIS kind's own await, not once before

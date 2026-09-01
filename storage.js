@@ -76,18 +76,45 @@ const DOC_PENDING_KEY = 'doc-pending';
 export const loadDoc = (kind, store) => read(keyFor(kind), null, store);
 export const saveDoc = (kind, doc, store) => write(keyFor(kind), doc, store);
 
+/* Unlike the date queue, a document marker carries the `u` stamp of the write
+   that armed it. A date names its own record: 'pending 2026-08-20' can only
+   ever mean the record stored under that date. A kind does not — 'profile'
+   means whatever profile is in storage when the flush finally runs, which is
+   not necessarily the profile the flag was raised for. The two come apart
+   whenever the local write fails but the (much smaller) queue write lands,
+   and after a reload the flag then points at an OLDER stored envelope. Pushed,
+   that moves the server row's updated_at backwards — PostgREST upserts are
+   last-request-wins — and silently evicts a newer write made on another
+   device. The stamp is what lets the flush tell "the queued write is still
+   here to send" from "the write this flag recorded is gone".
+
+   One marker per kind, not one per write: two edits before a single flush are
+   one queued write — the later one — so re-marking replaces the stamp rather
+   than adding a second entry to clear against. */
+const str = (v) => (typeof v === 'string' ? v : '');
+
+const marker = (m) => {
+  /* A bare string is what every build before the stamp existed wrote. A
+     device that queued one offline and then updated must still flush it, so
+     it reads as a marker whose stamp is UNKNOWN — never as a stale one. */
+  if (typeof m === 'string') return m ? { kind: m, u: null } : null;
+  const kind = m && typeof m === 'object' ? str(m.kind) : '';
+  return kind ? { kind, u: str(m.u) || null } : null;
+};
+
 export function loadDocPending(store) {
   const v = read(keyFor(DOC_PENDING_KEY), [], store);
-  return Array.isArray(v) ? v : [];
+  return (Array.isArray(v) ? v : []).map(marker).filter(Boolean);
 }
 
-export function markDocPending(kind, store) {
-  write(keyFor(DOC_PENDING_KEY), [...new Set([...loadDocPending(store), kind])], store);
+export function markDocPending(kind, u, store) {
+  const rest = loadDocPending(store).filter((m) => m.kind !== kind);
+  write(keyFor(DOC_PENDING_KEY), [...rest, { kind, u: str(u) || null }], store);
 }
 
 export function clearDocPending(kinds, store) {
   const gone = new Set(kinds);
-  write(keyFor(DOC_PENDING_KEY), loadDocPending(store).filter((k) => !gone.has(k)), store);
+  write(keyFor(DOC_PENDING_KEY), loadDocPending(store).filter((m) => !gone.has(m.kind)), store);
 }
 
 /* One-off, on first sign-in: adopt the data written before accounts existed.
