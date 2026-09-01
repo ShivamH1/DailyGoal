@@ -22,20 +22,31 @@ that stays true).
 
 ## Supabase setup
 
-The app talks to Postgres over PostgREST — no SDK. Sign-in is Google OAuth
-through Supabase Auth (PKCE in the browser, so no client secret ships).
+The app talks to Postgres over PostgREST — no SDK. Sign-in is an email and a
+password through Supabase Auth: two requests, no redirect out of the app, no
+client secret, and nothing to configure with a third party.
 
-### 1. Google OAuth
+### 1. Authentication settings
 
-- In the Google Cloud console, create an OAuth client of type **Web
-  application**, with the authorized redirect URI
-  `https://<project-ref>.supabase.co/auth/v1/callback`.
-- In Supabase → Authentication → Providers → Google: enable it and paste the
-  client ID and secret.
-- In Supabase → Authentication → URL Configuration: add **every URL the app
-  is served from** (`http://localhost:8080`, the deployed URL) to the
-  redirect allow-list. An unlisted URL is rejected without explanation —
-  this is the most common way the whole flow fails.
+In Supabase → Authentication:
+
+- **Sign In / Providers → Email** must be enabled. It is on by default, and
+  it is the only provider this app uses.
+- **Confirm email** decides what registering does. With it OFF, a new
+  account is signed in immediately. With it ON, Supabase emails a
+  confirmation link and the account can do nothing until it is clicked —
+  which needs a real SMTP provider configured, because the built-in mailer
+  sends a couple of messages an hour and is documented as test-only. The app
+  handles both: a registration that comes back without a session says to
+  check that inbox instead of pretending to be signed in.
+- **Minimum password length** should be at least 8, matching `MIN_PASSWORD`
+  in `auth.js`. The client checks the same number before sending, but the
+  server setting is the rule — the client's copy only saves a round trip.
+- **Leaked password protection**, if the plan offers it, is worth having on.
+  It costs nothing here and refuses passwords already known to be breached.
+
+No redirect allow-list, no provider keys, no callback URL: none of that
+exists in this flow any more.
 
 ### 2. `.env` (local, gitignored)
 
@@ -97,9 +108,18 @@ The app has real accounts. Row-level security grants each `authenticated`
 user exactly the rows where `user_id = auth.uid()` — a second account
 cannot read or write the first's data, and the server, not the client,
 enforces that. The anon key still ships to the browser (it has to: it is
-what lets the app start the OAuth flow and mint a session), but the anon
-key **alone grants nothing** once the phase-3 cutover has revoked the
+what the sign-in and registration requests are addressed with), but the
+anon key **alone grants nothing** once the phase-3 cutover has revoked the
 `anon` role's table access. A token, not a key, is what reads and writes.
+
+A password is only ever an argument: it goes into a request body and is
+dropped, never stored, never logged, never in a URL, and not sent at all
+when it is too short to succeed. The session's JWT does live in
+`localStorage` — an offline-first app has to survive a reload — which is an
+XSS exposure, and the mitigation is that no user-authored string is ever
+interpolated into `innerHTML` anywhere in this codebase. Every refused
+sign-in says the same thing, so the gate cannot be used to find out whether
+an address has an account here.
 
 ## Deploy
 

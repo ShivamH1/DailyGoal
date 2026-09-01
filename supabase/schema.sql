@@ -137,11 +137,10 @@ grant select, insert, update, delete on user_schedule to authenticated;
 -- Phase 3 cutover — NOT YET RUN.
 --
 -- Do not apply this until the project owner's pre-account rows have been
--- migrated (Task 7, blocked on completing Google sign-in setup) and the
--- client authenticates on every request (Tasks 8-9, code-complete as of this
--- commit but not yet exercised against the live project). Applying it first
--- would orphan the owner's existing rows behind a policy that no longer
--- matches anything, with no anon fallback left to read them back out.
+-- migrated onto their account (Task 7) and the client authenticates on every
+-- request (Tasks 8-9). Applying it first would orphan the owner's existing
+-- rows behind a policy that no longer matches anything, with no anon
+-- fallback left to read them back out.
 --
 -- It must not be left undone either, and the reason is sharper than "tidy
 -- up": single_user above names no role, so it applies to `public` — every

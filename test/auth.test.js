@@ -215,10 +215,10 @@ test('signOut revokes server-side when it can', async () => {
 
 import { authView } from '../auth.js';
 
-test('an unconfigured build says so rather than showing a dead button', () => {
+test('an unconfigured build says so rather than showing a dead form', () => {
   /* config.js is generated at build time. If it is missing or still holds
-     placeholders, "Continue with Google" cannot work, and rendering it
-     anyway produces a button that fails with a network error. */
+     placeholders there is no project to sign in to, and showing the form
+     anyway invites someone to type a password into nothing. */
   assert.equal(authView(false, null), 'unconfigured');
   assert.equal(authView(false, { access_token: 'a' }), 'unconfigured');
 });
