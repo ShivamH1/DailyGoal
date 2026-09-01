@@ -37,18 +37,35 @@ export function mountAuthForm({ root, onSignIn, onSignUp }) {
 
   const form = el('form', 'auth-form');
 
+  /* A visible label per field, bound by id so tapping the word focuses the
+     input. Not a placeholder doing the job: a placeholder disappears exactly
+     when a half-filled form most needs to say what its fields are, and the
+     password field cannot carry one at all once anything is typed. Without
+     these the gate rendered as two identical empty pills, which is how it
+     shipped until it was looked at rather than tested. */
+  const labelled = (id, text, input) => {
+    const label = el('label', 'auth-label');
+    label.setAttribute('for', id);
+    label.textContent = text;
+    input.setAttribute('id', id);
+    /* aria-label as well as the bound label: they carry the same word, and
+       the tests address the fields by it. */
+    input.setAttribute('aria-label', text);
+    const row = el('div', 'auth-row');
+    row.append(label, input);
+    return row;
+  };
+
   const emailInput = el('input', 'auth-input');
   emailInput.type = 'email';
   emailInput.value = '';
   emailInput.placeholder = 'you@example.com';
-  emailInput.setAttribute('aria-label', 'Email');
   emailInput.setAttribute('autocomplete', 'email');
   emailInput.setAttribute('required', 'required');
 
   const passwordInput = el('input', 'auth-input');
   passwordInput.type = 'password';
   passwordInput.value = '';
-  passwordInput.setAttribute('aria-label', 'Password');
   passwordInput.setAttribute('required', 'required');
 
   const submitBtn = el('button', 'auth-submit');
@@ -143,7 +160,11 @@ export function mountAuthForm({ root, onSignIn, onSignUp }) {
     passwordInput.focus?.();
   });
 
-  form.append(emailInput, passwordInput, submitBtn);
+  form.append(
+    labelled('authEmail', 'Email', emailInput),
+    labelled('authPassword', 'Password', passwordInput),
+    submitBtn,
+  );
   root.append(form, toggleBtn, errorLine, noteLine);
   render();
 

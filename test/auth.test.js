@@ -234,7 +234,8 @@ test('a session shows the app', () => {
 /* ---------- email + password ---------- */
 import {
   signIn, signUp, passwordProblem, MIN_PASSWORD,
-  CREDENTIALS_MESSAGE, SIGNUP_REFUSED_MESSAGE, RATE_LIMIT_MESSAGE, isCredentialsError,
+  CREDENTIALS_MESSAGE, SIGNUP_REFUSED_MESSAGE, RATE_LIMIT_MESSAGE, EMAIL_LIMIT_MESSAGE,
+  isCredentialsError,
 } from '../auth.js';
 
 const tokenResponse = (body = {}) => ({
@@ -378,4 +379,30 @@ test('being rate-limited is not reported as a wrong password either', async () =
     assert.equal(err?.message, RATE_LIMIT_MESSAGE);
     assert.equal(isCredentialsError(err), false);
   }
+});
+
+test('an exhausted email quota is not reported as too many attempts', async () => {
+  /* Observed on the live project: with Confirm email on and no SMTP
+     provider, registering returns 429 over_email_send_rate_limit — the
+     project's few-an-hour mailer allowance, not anything the person did.
+     "Too many attempts. Wait a minute" tells them to stop doing something
+     they were not doing, and waiting a minute does not help. */
+  let err = null;
+  await signUp({
+    email: 'new@test', password: 'x'.repeat(MIN_PASSWORD), base: 'https://p', apikey: 'A',
+    fetchImpl: async () => refused(429, { error_code: 'over_email_send_rate_limit', msg: 'email rate limit exceeded' }),
+    store: fakeStore(), now: 0,
+  }).catch((e) => { err = e; });
+  assert.equal(err?.message, EMAIL_LIMIT_MESSAGE);
+  assert.match(err.message, /email/i);
+});
+
+test('a plain request-rate 429 still says too many attempts', async () => {
+  let err = null;
+  await signIn({
+    email: 'me@test', password: 'x'.repeat(MIN_PASSWORD), base: 'https://p', apikey: 'A',
+    fetchImpl: async () => refused(429, { error_code: 'over_request_rate_limit' }),
+    store: fakeStore(), now: 0,
+  }).catch((e) => { err = e; });
+  assert.equal(err?.message, RATE_LIMIT_MESSAGE);
 });

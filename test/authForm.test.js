@@ -201,3 +201,19 @@ test('the password is never written into the page', async () => {
     assert.doesNotMatch(JSON.stringify(el.attrs), /correct horse/);
   }
 });
+
+test('both fields carry a visible label, not just an accessible one', () => {
+  /* Found by looking at the rendered page rather than the tree: the email
+     input had a placeholder and the password input had nothing at all, so
+     the gate showed two identical empty pills and only a screen reader
+     could tell which was which. A placeholder is not a label either — it
+     disappears exactly when a half-filled form most needs to say what its
+     fields are. */
+  const { root } = mount();
+  const labels = findAll(root, (el) => el.tagName === 'LABEL');
+  assert.deepEqual(labels.map((l) => l.textContent), ['Email', 'Password']);
+  /* Bound to their inputs, so tapping the word focuses the field. */
+  assert.equal(labels[0].getAttribute('for'), field(root, 'Email').getAttribute('id'));
+  assert.equal(labels[1].getAttribute('for'), field(root, 'Password').getAttribute('id'));
+  assert.ok(labels[0].getAttribute('for'), 'and the binding is a real id');
+});

@@ -152,6 +152,17 @@ export const SIGNUP_REFUSED_MESSAGE =
    them to keep trying, which is the only thing that cannot help. */
 export const RATE_LIMIT_MESSAGE = 'Too many attempts. Wait a minute and try again.';
 
+/* And a 429 has two meanings, which is worse than one wrong message. With
+   Confirm email on and no SMTP provider, EVERY registration tries to send a
+   confirmation link, and Supabase's built-in mailer allows a couple an hour
+   — so the first person to register after that allowance is spent is told
+   they are making too many attempts when they have made exactly one. The
+   difference is in the body: over_email_send_rate_limit names the mail
+   quota, over_request_rate_limit names the caller. Observed on the live
+   project, not inferred. */
+export const EMAIL_LIMIT_MESSAGE =
+  'This project can only send a few confirmation emails an hour, and that limit is used up. Try again later.';
+
 export const isCredentialsError = (err) =>
   err instanceof Error && err.message === CREDENTIALS_MESSAGE;
 
@@ -172,10 +183,15 @@ export const passwordProblem = (password) =>
 const credentials = (email, password) =>
   JSON.stringify({ email: String(email || '').trim(), password: String(password || '') });
 
-const refusal = (status, generic) => {
-  if (status === 429) return RATE_LIMIT_MESSAGE;
-  return status >= 400 && status < 500 ? generic : `auth request failed: ${status}`;
-};
+async function refusal(res, generic) {
+  if (res.status !== 429) {
+    return res.status >= 400 && res.status < 500 ? generic : `auth request failed: ${res.status}`;
+  }
+  /* Read only for the 429, and defensively: a body that cannot be read is
+     still a rate limit, just not one we can name. */
+  const body = await Promise.resolve(res.text?.()).catch(() => '');
+  return /email/i.test(String(body || '')) ? EMAIL_LIMIT_MESSAGE : RATE_LIMIT_MESSAGE;
+}
 
 export async function signIn({
   email, password,
@@ -187,7 +203,7 @@ export async function signIn({
     headers: { apikey, 'Content-Type': 'application/json' },
     body: credentials(email, password),
   });
-  if (!res.ok) throw new Error(refusal(res.status, CREDENTIALS_MESSAGE));
+  if (!res.ok) throw new Error(await refusal(res, CREDENTIALS_MESSAGE));
   const session = sessionFromTokenResponse(await res.json(), now);
   if (!session) throw new Error('sign-in failed: no token in response');
   saveSession(session, store);
@@ -212,7 +228,7 @@ export async function signUp({
     headers: { apikey, 'Content-Type': 'application/json' },
     body: credentials(email, password),
   });
-  if (!res.ok) throw new Error(refusal(res.status, SIGNUP_REFUSED_MESSAGE));
+  if (!res.ok) throw new Error(await refusal(res, SIGNUP_REFUSED_MESSAGE));
   const session = sessionFromTokenResponse(await res.json(), now);
   if (!session) return { session: null, needsConfirmation: true };
   saveSession(session, store);
