@@ -1,6 +1,6 @@
 /* Classic worker script — not a module, so no imports here.
    Bump CACHE when any shell file changes; activate purges older caches. */
-const CACHE = 'weekly-innings-v8';
+const CACHE = 'weekly-innings-v9';
 
 /* './' rather than './index.html': Vercel's cleanUrls 308-redirects
    /index.html to /, addAll follows the redirect and stores a response with the
