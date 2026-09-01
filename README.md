@@ -38,7 +38,14 @@ In Supabase → Authentication:
   which needs a real SMTP provider configured, because the built-in mailer
   sends a couple of messages an hour and is documented as test-only. The app
   handles both: a registration that comes back without a session says to
-  check that inbox instead of pretending to be signed in.
+  check that inbox instead of pretending to be signed in. Measured on this
+  project with confirmation ON and no SMTP: the second registration attempt
+  came back `429 over_email_send_rate_limit`. That is the failure mode, and
+  it looks to the user like the sign-up being throttled.
+- Registration goes through Supabase's own address validation, which rejects
+  `@example.com` outright (`email_address_invalid`). The admin API does not,
+  which is why a throwaway account created with the service key can hold an
+  address that no one could have registered.
 - **Minimum password length** should be at least 8, matching `MIN_PASSWORD`
   in `auth.js`. The client checks the same number before sending, but the
   server setting is the rule — the client's copy only saves a round trip.
