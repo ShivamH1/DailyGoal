@@ -475,6 +475,13 @@ function renderProfile() {
      renderCalendar, and never by the static HTML. */
   document.getElementById('stSLabel').textContent = tickLabel(profile.ticks[0], 0);
   document.getElementById('stWLabel').textContent = tickLabel(profile.ticks[1], 1);
+  /* And the streak card's own caption, which is the same claim about the same
+     two ticks — computeStreak counts a day when ticks[0] and ticks[1] are
+     both done. It sat in the static HTML as "study + workout" through the
+     whole of Decision A, describing a rule in one person's words next to the
+     number it explains. */
+  document.getElementById('streakCap').textContent =
+    `${tickLabel(profile.ticks[0], 0)} + ${tickLabel(profile.ticks[1], 1)}`;
 
   profile.ticks.forEach((t, i) => {
     const btn = document.getElementById(`t-${t.key}`);

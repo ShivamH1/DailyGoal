@@ -1080,3 +1080,31 @@ test('an unconfigured build hides the form instead of leaving it inert', async (
   assert.equal(ctx.document.getElementById('authFormRoot').hidden, true);
   assert.match(ctx.document.getElementById('authError').textContent, /no Supabase configuration/);
 });
+
+test('the streak caption names the two ticks the streak actually counts', async () => {
+  /* Found by looking at the running app: the habits were renamed and the
+     streak card still read "study + workout" — the exact framing Decision A
+     removed everywhere else. The calendar's two captions were fixed and this
+     one, in the same card as the number it explains, was missed. It has to
+     follow the profile for the same reason they do: the streak rule is
+     "ticks[0] and ticks[1] both done", so the caption is a statement about
+     which two, and a stale one describes a rule the app is not applying. */
+  const ctx = await boot();
+  const cap = ctx.document.getElementById('streakCap');
+  const tickRow = (i) => byClass(profileRoot(ctx), 'pf-tick-row')[i];
+  const rename = (i, to) => {
+    control(tickRow(i), 'Tick label').value = to;
+    control(tickRow(i), 'Tick label').dispatch('blur');
+  };
+  drive(ctx, () => {
+    openProfileEditor(ctx);
+    rename(0, 'Deep work');
+    rename(1, 'Run');
+  });
+  assert.equal(cap.textContent, 'Deep work + Run');
+
+  /* And a name taken back falls back by position, like every other render
+     site — never to the word it used to be. */
+  drive(ctx, () => rename(0, ''));
+  assert.equal(cap.textContent, 'Habit 1 + Run');
+});

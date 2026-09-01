@@ -62,7 +62,10 @@
           </div>
           <div class="streak-row">
             <b class="streak-num" id="streak">0</b>
-            <span class="streak-cap">days<br><span>study + workout</span></span>
+            <!-- Empty here and filled by renderProfile, like the two calendar
+                 captions: the streak counts ticks[0] and ticks[1], so this
+                 line has to say which two THIS account named them. -->
+            <span class="streak-cap">days<br><span id="streakCap"></span></span>
           </div>
           <!-- Sizes and colours come from growthVals() in progress.js. -->
           <div class="growth" id="growthDots" role="img" aria-label="Growth over the last fourteen days"></div>
