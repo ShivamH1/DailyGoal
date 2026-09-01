@@ -848,11 +848,29 @@ async function flushSync() {
          kind is skipped rather than pushed or wrongly cleared. */
       const docFor = (k) => (k === 'profile' ? profileDoc : k === 'schedule' ? scheduleDoc : null);
       /* The queue holds markers, not bare kinds — each carries the stamp of
-         the write that armed it. Only the kind is read here; the rule that
-         acts on the stamp lands next. */
-      for (const { kind: k } of kinds) {
+         the write that armed it, and that stamp is what decides whether
+         there is anything left to send. */
+      for (const { kind: k, u: queued } of kinds) {
         const doc = docFor(k);
-        if (!doc) continue;
+        /* The write this flag stands for is not here any more: either
+           nothing is stored under the kind at all, or what is stored is
+           OLDER than the write that armed the flag — the local write failed
+           while the much smaller queue write landed, and a reload later
+           only the flag survives. Both used to `continue`, which meant a
+           flag nothing could ever clear: the drain re-arms the flush at the
+           end, so the app reported "queued · 1" permanently, and in the
+           older-document case it did worse than lie. It pushed that
+           document under its old stamp, and PostgREST upserts being
+           last-request-wins, the server row's updated_at moved BACKWARDS —
+           evicting a newer write from another device silently.
+
+           So the flag is dropped rather than pushed. Nothing is lost that
+           still exists: the stored document stays exactly where it is, and
+           the write being dropped is one this device already reported as
+           not saved. An UNKNOWN stamp (queued null — a bare-string marker
+           from a build before this rule) is not a comparison and never
+           drops: it means "push what is here". */
+        if (!doc || (queued && (doc.u || '') < queued)) { clearDocPending([k]); continue; }
         /* Snapshot immediately before THIS kind's own await, not once before
            the loop. A pre-loop snapshot is right only for the first kind: by
            the time a later one is reached, earlier pushes have already

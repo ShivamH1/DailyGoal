@@ -729,3 +729,103 @@ test('a refresh the server rejects still signs the user out at the gate', async 
   assert.equal(ctx.storage.map.has('wi:session'), false, 'the dead session is cleared');
   assert.match(ctx.document.getElementById('authError').textContent, /expired/);
 });
+
+/* ---------- the document queue's drop rule ---------- */
+
+/* Records every request so a test can assert about what did NOT go out —
+   the point of the two tests below is a push that must never happen. Every
+   route answers with an empty array, which is a valid body for the progress
+   pull, both document pulls, and a return=minimal push alike. */
+function recordingFetch(calls) {
+  return async (url, opts = {}) => {
+    calls.push({ url: String(url), method: opts.method || 'GET', body: opts.body });
+    return jsonResponse([]);
+  };
+}
+const pushesTo = (calls, table) =>
+  calls.filter((c) => c.method === 'POST' && c.url.includes(`/rest/v1/${table}`));
+
+/* A stored envelope, as saveDoc writes it. */
+const storedDoc = (storage, kind, value, u) =>
+  storage.setItem(`wi:u1:${kind}`, JSON.stringify({ value, u }));
+const queue = (storage, markers) =>
+  storage.setItem('wi:u1:doc-pending', JSON.stringify(markers));
+
+test('a pending flag whose write is not in storage is dropped, not retried forever', async () => {
+  /* The failed-cache case, one reload later: saveDoc could not write the
+     profile but the much smaller queue write landed, so the flag survived a
+     document that never existed. docFor returns null for it, and the loop
+     used to `continue` — leaving the flag in place, re-arming the flush at
+     the end, and reporting "queued · 1" for the rest of the account's life
+     over a write that is not there to send. The write is gone; the flag
+     goes with it. */
+  const timers = captureTimers();
+  try {
+    const calls = [];
+    const ctx = await boot({
+      session: {},
+      fetchImpl: recordingFetch(calls),
+      seed: (storage) => queue(storage, [{ kind: 'profile', u: '2026-08-29T10:00:00.000Z' }]),
+    });
+    await timers.run();
+    assert.deepEqual(pushesTo(calls, 'user_profile'), [], 'nothing was pushed');
+    assert.deepEqual(ctx.storage.read('wi:u1:doc-pending'), [], 'and the flag is gone');
+    assert.doesNotMatch(ctx.document.getElementById('syncStatus').textContent, /queued/);
+  } finally {
+    timers.restore();
+  }
+});
+
+test('a flag standing for a write newer than the stored document never pushes the old one', async () => {
+  /* The silent-eviction case. The stored envelope is OLDER than the write
+     the flag recorded — the newer one failed to cache — so pushing it would
+     send a document nobody asked to send, under a stamp that is behind the
+     server's. PostgREST upserts are last-request-wins, so updated_at moves
+     BACKWARDS and a newer write made on another device is evicted with
+     nothing said anywhere. The queued write no longer exists to send, so
+     the flag is dropped; the stored document is left exactly where it is. */
+  const timers = captureTimers();
+  try {
+    const calls = [];
+    const ctx = await boot({
+      session: {},
+      fetchImpl: recordingFetch(calls),
+      seed: (storage) => {
+        storedDoc(storage, 'profile', { season: 'stored', onboarded: true }, '2026-08-28T09:00:00.000Z');
+        queue(storage, [{ kind: 'profile', u: '2026-08-29T10:00:00.000Z' }]);
+      },
+    });
+    await timers.run();
+    assert.deepEqual(pushesTo(calls, 'user_profile'), [], 'the older document stayed here');
+    assert.deepEqual(ctx.storage.read('wi:u1:doc-pending'), [], 'the flag it could not honour is gone');
+    assert.equal(ctx.storage.read('wi:u1:profile').value.season, 'stored', 'and the document itself is untouched');
+  } finally {
+    timers.restore();
+  }
+});
+
+test('a legacy bare-string flag still pushes what is stored', async () => {
+  /* Every build before the stamp existed queued plain kind strings. An
+     unknown stamp cannot be compared, and the only safe reading of it is
+     "push what is here" — treating it as stale would silently drop a real
+     edit made offline by the version the user was running yesterday. */
+  const timers = captureTimers();
+  try {
+    const calls = [];
+    const ctx = await boot({
+      session: {},
+      fetchImpl: recordingFetch(calls),
+      seed: (storage) => {
+        storedDoc(storage, 'profile', { season: 'stored', onboarded: true }, '2026-08-29T10:00:00.000Z');
+        queue(storage, ['profile']);
+      },
+    });
+    await timers.run();
+    const [push] = pushesTo(calls, 'user_profile');
+    assert.ok(push, 'the queued edit went out');
+    assert.equal(JSON.parse(push.body).updated_at, '2026-08-29T10:00:00.000Z');
+    assert.deepEqual(ctx.storage.read('wi:u1:doc-pending'), [], 'and the queue is clear');
+  } finally {
+    timers.restore();
+  }
+});
