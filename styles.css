@@ -271,10 +271,37 @@ svg{display:block}
 .gate h2{font-family:var(--font-heading);font-weight:var(--font-heading-weight);
   margin-bottom:.5rem}
 .gate p{color:var(--text-muted);max-width:34ch;margin:0 auto 1.5rem}
-.gate-btn{font:inherit;font-weight:600;cursor:pointer;
-  padding:.75rem 1.5rem;border-radius:999px;
+/* The form is a narrow column inside a centred gate: the fields are
+   left-aligned within it, because centred field text reads as decoration and
+   a person filling in a form is reading down an edge. Same input treatment as
+   the note field on the main page — pill, surface fill, hairline edge — so
+   the first thing a new account sees already belongs to the app. */
+.auth-form{display:grid;gap:var(--space-3);width:min(320px,100%);
+  margin:0 auto var(--space-3);text-align:left}
+.auth-input{width:100%;padding:11px 16px;font-size:15px;
+  font-family:var(--font-body);color:var(--color-text);
+  background:var(--color-surface);border:1px solid var(--edge);
+  border-radius:var(--radius-pill);caret-color:var(--color-accent)}
+.auth-input::placeholder{color:var(--text-muted)}
+.auth-input:focus-visible{outline:2px solid var(--color-accent);outline-offset:1px}
+.auth-submit{font:inherit;font-weight:600;cursor:pointer;
+  padding:.75rem 1.5rem;border-radius:var(--radius-pill);
   background:var(--fill-strong);color:var(--fill-strong-ink);border:0}
-.gate-btn:focus-visible{outline:2px solid var(--color-text);outline-offset:2px}
+.auth-submit:focus-visible{outline:2px solid var(--color-text);outline-offset:2px}
+/* Visibly out of action while a request is in flight, because the button
+   locks itself and a control that ignores a tap with no explanation reads as
+   a broken page. */
+.auth-submit:disabled{opacity:.55;cursor:progress}
+/* A second action, not a second button: creating an account is the same form
+   with a different verb, and two filled pills would ask the user to choose
+   between them before they have typed anything. */
+.auth-toggle{font:inherit;font-size:13px;cursor:pointer;background:none;border:0;
+  color:var(--color-accent-700);text-decoration:underline;text-underline-offset:3px;
+  padding:var(--space-2)}
+.auth-toggle:focus-visible{outline:2px solid var(--color-text);outline-offset:2px}
+.auth-error{color:var(--warn);min-height:1.2em;margin:0 auto}
+.auth-note{color:var(--text-muted);font-size:13.5px;max-width:38ch;
+  margin:var(--space-2) auto 0}
 .gate-error{color:var(--warn);min-height:1.2em}
 
 /* 4.2 Hero ---------------------------------------------------------------- */
