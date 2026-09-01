@@ -797,7 +797,15 @@ footer p{margin:0;font-size:12.5px;color:var(--text-muted)}
 /* --- 5 · Response -------------------------------------------------------- */
 /* The design exposes a `stack` prop for the hero; this is that, on a query. */
 @media (max-width:840px){
-  .hero{grid-template-columns:1fr;gap:var(--space-6)}
+  /* minmax(0,1fr), not 1fr: a grid item's automatic minimum is its MAX-content
+     width, so the tick rows — a 20px label and its hint fighting for one line
+     — set a floor of about 423px, and the single column stayed that wide
+     inside a 390px phone. The cards then overflowed their own container and
+     the right-hand end of every row was clipped off the screen. That is the
+     whole of the "alignment" problem on a phone; the rules further down stop
+     the rows needing that width in the first place. */
+  .hero{grid-template-columns:minmax(0,1fr);gap:var(--space-6)}
+  .streak-card,.today-card{min-width:0}
 }
 @media (max-width:560px){
   .wrap{padding-left:var(--space-3);padding-right:var(--space-3)}
@@ -810,7 +818,16 @@ footer p{margin:0;font-size:12.5px;color:var(--text-muted)}
   .streak-card,.panel{padding:var(--space-4)}
   .rule,.week-stat{padding:var(--space-4)}
   .row{grid-template-columns:72px 1fr;gap:var(--space-3);padding:var(--space-2)}
-  .tick{gap:var(--space-3);padding:var(--space-2) var(--space-3);min-height:68px}
+  /* The hint drops under the label instead of competing with it for the same
+     line. Side by side neither can shrink — a habit named "Physical activity"
+     and a hint reading "Workout, run, or cricket" is simply wider than a
+     phone — and the hint is the secondary text, so the line it gives up is
+     the one it should give up first. Indented to start where the label does,
+     so the row still reads as one thing. */
+  .tick{gap:var(--space-3);padding:var(--space-2) var(--space-3);min-height:68px;
+    flex-wrap:wrap;row-gap:2px}
+  .tick .lbl{min-width:0;flex:1 1 auto}
+  .tick .hint{margin-left:0;flex:1 0 100%;padding-left:calc(38px + var(--space-3))}
   /* One field per line: a commitment row is a name, seven day buttons and
      two times, which is a grid on a laptop and a scramble on a phone. */
   .ob{padding-left:var(--space-3);padding-right:var(--space-3)}
@@ -818,6 +835,12 @@ footer p{margin:0;font-size:12.5px;color:var(--text-muted)}
   .ob-deadline .ob-field,.ob-rule .ob-field{flex:1 1 100%}
   .tick .mark{width:38px;height:38px}
   .tick .hint{font-size:11px}
+  /* One field per line in the profile editor, the same call the wizard rows
+     already make. Two inputs at a 140px basis both "fit" on a phone line and
+     neither is readable: a rule titled "Alternate the training" rendered as
+     "Alternate the traini" beside a body reading "Mon, Wed, Fri work" is not
+     an editable field, it is a pair of stubs. */
+  .pf-rule-row input,.pf-deadline-row>input,.pf-lane-row input,.pf-tick-row input{flex:1 1 100%}
   .cal-grid{gap:5px}
   .week-notes li{grid-template-columns:64px 1fr;gap:var(--space-2)}
 }
