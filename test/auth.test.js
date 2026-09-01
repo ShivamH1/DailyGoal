@@ -1,43 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { base64url, makeVerifier, makeChallenge } from '../auth.js';
-
-test('base64url uses the URL alphabet and drops padding', () => {
-  /* 0xFB 0xFF encodes to "+/8=" in standard base64; none of those three
-     characters may survive, because the value goes in a query string. */
-  assert.equal(base64url(new Uint8Array([0xfb, 0xff])), '-_8');
-  assert.doesNotMatch(base64url(new Uint8Array([0xfb, 0xff, 0x00])), /[+/=]/);
-});
-
-test('makeVerifier returns 43 unreserved characters', () => {
-  /* RFC 7636 requires 43-128 characters from [A-Za-z0-9-._~]. 32 random
-     bytes base64url-encoded is exactly 43. */
-  const v = makeVerifier(() => new Uint8Array(32).fill(0xff));
-  assert.equal(v.length, 43);
-  assert.match(v, /^[A-Za-z0-9\-._~]+$/);
-});
-
-test('makeVerifier draws exactly 32 bytes from the source it is given', () => {
-  let asked = 0;
-  makeVerifier((n) => { asked = n; return new Uint8Array(n); });
-  assert.equal(asked, 32);
-});
-
-test('makeVerifier is different every call with real randomness', () => {
-  assert.notEqual(makeVerifier(), makeVerifier());
-});
-
-test('makeChallenge matches the RFC 7636 appendix B vector', async () => {
-  /* The published test vector. If this passes, our S256 derivation is the
-     one Supabase will verify against — this is the single point where a
-     silent mistake would surface only as a failed login in a browser. */
-  const challenge = await makeChallenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk');
-  assert.equal(challenge, 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
-});
 
 import {
   sessionFromTokenResponse, saveSession, loadSession, clearSession,
-  expiresSoon, currentUserId, saveVerifier, readVerifier,
+  expiresSoon, currentUserId,
 } from '../auth.js';
 
 const fakeStore = (seed = {}) => {
@@ -89,13 +55,16 @@ test('loadSession rejects a stored value that is not a session', () => {
   assert.equal(loadSession(fakeStore({ 'wi:session': '{"nope":1}' })), null);
 });
 
-test('clearSession removes the session and any half-finished sign-in', () => {
-  const store = fakeStore();
+test('clearSession removes the session, and the dead key the OAuth build left', () => {
+  /* wi:pkce-verifier is written by no build since the sign-in flow became
+     email and password. A device that queued one before updating still has
+     it in storage — a secret nothing can ever spend — so signing out on
+     that device is what finally takes it away. */
+  const store = fakeStore({ 'wi:pkce-verifier': 'v' });
   saveSession({ access_token: 'a', expires_at: 1, user_id: 'u' }, store);
-  saveVerifier('v', store);
   clearSession(store);
   assert.equal(loadSession(store), null);
-  assert.equal(readVerifier(store), null);
+  assert.equal(store.getItem('wi:pkce-verifier'), null);
 });
 
 test('expiresSoon is true inside the skew window and false outside it', () => {
@@ -133,99 +102,6 @@ test('clearSession does not throw when localStorage is unavailable', () => {
       value: savedStorage,
     });
   }
-});
-
-import { authorizeUrl, stripAuthParams, beginSignIn, completeSignIn } from '../auth.js';
-
-test('authorizeUrl targets the social-login route with an s256 challenge', () => {
-  const u = new URL(authorizeUrl('https://p.supabase.co', {
-    redirectTo: 'http://localhost:8080/', challenge: 'CHAL',
-  }));
-  assert.equal(u.pathname, '/auth/v1/authorize');
-  assert.equal(u.searchParams.get('provider'), 'google');
-  assert.equal(u.searchParams.get('redirect_to'), 'http://localhost:8080/');
-  assert.equal(u.searchParams.get('code_challenge'), 'CHAL');
-  assert.equal(u.searchParams.get('code_challenge_method'), 's256');
-});
-
-test('stripAuthParams removes the spent code and the error fields', () => {
-  const clean = stripAuthParams('http://localhost:8080/?code=abc&error=x&error_description=y&keep=1#frag');
-  assert.equal(clean, 'http://localhost:8080/?keep=1');
-});
-
-test('stripAuthParams leaves no dangling question mark', () => {
-  assert.equal(stripAuthParams('http://localhost:8080/?code=abc'), 'http://localhost:8080/');
-});
-
-test('beginSignIn stores the verifier before navigating', async () => {
-  const store = fakeStore();
-  let went = '';
-  const url = await beginSignIn({
-    base: 'https://p.supabase.co', redirectTo: 'http://localhost:8080/',
-    store, navigate: (u) => { went = u; },
-  });
-  const verifier = readVerifier(store);
-  assert.ok(verifier && verifier.length >= 43, 'verifier was not stored');
-  assert.equal(went, url);
-  /* The challenge on the wire must be the S256 of the verifier we kept, or
-     the exchange in completeSignIn fails with no useful message. */
-  assert.equal(
-    new URL(url).searchParams.get('code_challenge'),
-    await makeChallenge(verifier)
-  );
-});
-
-test('completeSignIn does nothing when there is no code in the URL', async () => {
-  const s = await completeSignIn({ href: 'http://localhost:8080/', store: fakeStore() });
-  assert.equal(s, null);
-});
-
-test('completeSignIn exchanges the code with grant_type=pkce', async () => {
-  const store = fakeStore();
-  saveVerifier('VERIFIER', store);
-  let seen;
-  const fetchImpl = async (url, opts) => {
-    seen = { url, opts };
-    return { ok: true, json: async () => ({ access_token: 'AT', refresh_token: 'RT', expires_in: 3600, user: { id: 'u1' } }) };
-  };
-  const s = await completeSignIn({
-    href: 'http://localhost:8080/?code=CODE', base: 'https://p.supabase.co',
-    apikey: 'ANON', fetchImpl, store, now: 0,
-  });
-  assert.match(seen.url, /\/auth\/v1\/token\?grant_type=pkce$/);
-  assert.deepEqual(JSON.parse(seen.opts.body), { auth_code: 'CODE', code_verifier: 'VERIFIER' });
-  assert.equal(seen.opts.headers.apikey, 'ANON');
-  assert.equal(s.access_token, 'AT');
-  assert.deepEqual(loadSession(store), s);
-});
-
-test('completeSignIn discards the verifier once it has been spent', async () => {
-  const store = fakeStore();
-  saveVerifier('VERIFIER', store);
-  const fetchImpl = async () => ({ ok: true, json: async () => ({ access_token: 'AT', expires_in: 60, user: { id: 'u' } }) });
-  await completeSignIn({ href: 'http://x/?code=C', base: 'https://p', apikey: 'A', fetchImpl, store, now: 0 });
-  assert.equal(readVerifier(store), null);
-});
-
-test('completeSignIn throws when the verifier is missing', async () => {
-  /* Landing on ?code= with no stored verifier means the sign-in began in a
-     different browser or storage was cleared mid-flow. Silently returning
-     null would leave the user staring at a sign-in button that just failed. */
-  await assert.rejects(
-    () => completeSignIn({ href: 'http://x/?code=C', store: fakeStore(), fetchImpl: async () => ({ ok: true, json: async () => ({}) }) }),
-    /sign-in state/
-  );
-});
-
-test('completeSignIn surfaces a rejected exchange instead of storing nothing quietly', async () => {
-  const store = fakeStore();
-  saveVerifier('V', store);
-  const fetchImpl = async () => ({ ok: false, status: 404, text: async () => 'flow_state_not_found' });
-  await assert.rejects(
-    () => completeSignIn({ href: 'http://x/?code=C', base: 'https://p', apikey: 'A', fetchImpl, store }),
-    /404/
-  );
-  assert.equal(loadSession(store), null);
 });
 
 import { accessToken, signOut, resetRefreshState } from '../auth.js';
@@ -353,28 +229,6 @@ test('no session shows the sign-in gate', () => {
 
 test('a session shows the app', () => {
   assert.equal(authView(true, { access_token: 'a', user_id: 'u' }), 'app');
-});
-
-test('completeSignIn discards the verifier when the exchange fails too', async () => {
-  /* A verifier is single-use: the code it was minted for has been presented
-     and refused, so nothing can ever be exchanged with it again. Left in
-     storage it is a dead secret sitting there indefinitely, and it makes
-     the next stray ?code= — a reload of a bookmarked redirect, a link
-     someone else pasted — look like a sign-in in progress rather than the
-     "start sign-in again" it is. Both failing exits drop it: an exchange
-     the server refused, and one that came back without a token. */
-  for (const [why, res] of [
-    ['refused', { ok: false, status: 400, text: async () => 'invalid grant' }],
-    ['no token', { ok: true, json: async () => ({}) }],
-  ]) {
-    const store = fakeStore();
-    saveVerifier('VERIFIER', store);
-    await assert.rejects(completeSignIn({
-      href: 'http://x/?code=C', base: 'https://p', apikey: 'A',
-      fetchImpl: async () => res, store, now: 0,
-    }), /sign-in failed/, why);
-    assert.equal(readVerifier(store), null, `${why}: the spent verifier is gone`);
-  }
 });
 
 /* ---------- email + password ---------- */

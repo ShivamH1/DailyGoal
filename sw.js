@@ -12,6 +12,7 @@ const SHELL = [
   './styles.css',
   './app.js',
   './auth.js',
+  './authForm.js',
   './deadlines.js',
   './onboarding.js',
   './profile.js',

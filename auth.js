@@ -1,13 +1,20 @@
 /* Supabase Auth over plain fetch. No SDK, for the same reason sync.js has
-   none: one flow, three endpoints, and a bundle we would otherwise have to
+   none: one flow, four endpoints, and a bundle we would otherwise have to
    cache offline.
 
-   The endpoints here were verified against the live project rather than read
-   from the docs. Supabase's published REST auth documentation describes the
-   OAuth *server* flow — Supabase acting as a provider for third-party apps —
-   which is a different feature with different routes. Social login lives at
-   /auth/v1/authorize?provider=…, and the PKCE exchange is grant_type=pkce
-   (grant_type=authorization_code is rejected as unsupported). */
+   Email and password, and nothing else. This was a Google PKCE flow until
+   the live project turned out to have no social provider enabled at all —
+   the button could not have completed a sign-in — and the flow it replaced
+   cost a redirect out of the app, a stored code verifier, and a spent-code
+   parameter to strip from the address bar on every reload. What is left is
+   two requests that return the same token response the refresh path already
+   understood. If a social provider is ever wanted, it is added beside these,
+   not instead of them.
+
+   The endpoints were verified against the live project rather than read from
+   the docs: Supabase's published REST auth documentation describes the OAuth
+   *server* flow — Supabase acting as a provider for third-party apps — which
+   is a different feature with different routes. */
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
@@ -33,26 +40,10 @@ export function setConfigForTests(next) {
     : { url: SUPABASE_URL, key: SUPABASE_ANON_KEY };
 }
 
-export function base64url(bytes) {
-  let s = '';
-  for (const b of bytes) s += String.fromCharCode(b);
-  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-const randomSource = (n) => globalThis.crypto.getRandomValues(new Uint8Array(n));
-
-/* 32 bytes → 43 base64url characters, the low end of RFC 7636's 43-128. */
-export function makeVerifier(randomBytes = randomSource) {
-  return base64url(randomBytes(32));
-}
-
-export async function makeChallenge(verifier, subtle = globalThis.crypto.subtle) {
-  const digest = await subtle.digest('SHA-256', new TextEncoder().encode(verifier));
-  return base64url(new Uint8Array(digest));
-}
-
 const SESSION_KEY = 'wi:session';
-const VERIFIER_KEY = 'wi:pkce-verifier';
+/* Written by no build since the OAuth flow was removed. Still cleared, so a
+   device that queued one before updating does not keep a dead secret. */
+const LEGACY_VERIFIER_KEY = 'wi:pkce-verifier';
 
 /* The session is NOT namespaced by user: it is the thing that decides which
    user we are. Everything else keys off it. */
@@ -107,7 +98,7 @@ export function clearSession(store) {
   try {
     const s = store || defaultStore();
     s.removeItem(SESSION_KEY);
-    s.removeItem(VERIFIER_KEY);
+    s.removeItem(LEGACY_VERIFIER_KEY);
   } catch { /* storage off */ }
 }
 
@@ -117,18 +108,6 @@ export function expiresSoon(session, now = Date.now(), skewMs = 60_000) {
 }
 
 export const currentUserId = (store) => loadSession(store)?.user_id || null;
-
-export function saveVerifier(verifier, store) {
-  try { (store || defaultStore()).setItem(VERIFIER_KEY, verifier); return true; } catch { return false; }
-}
-
-export function clearVerifier(store) {
-  try { (store || defaultStore()).removeItem(VERIFIER_KEY); } catch { /* storage off */ }
-}
-
-export function readVerifier(store) {
-  try { return (store || defaultStore()).getItem(VERIFIER_KEY); } catch { return null; }
-}
 
 /* Same normalisation as sync.js: the dashboard hands out the project URL with
    /rest/v1/ already appended, and these routes append their own path. */
@@ -142,83 +121,6 @@ const authBase = () => normalizeBase(cfg.url);
 
 export const isAuthConfigured = () =>
   Boolean(cfg.url && cfg.key && !cfg.url.includes('<'));
-
-export function authorizeUrl(base, { redirectTo, challenge, provider = 'google' }) {
-  const q = new URLSearchParams({
-    provider,
-    redirect_to: redirectTo,
-    code_challenge: challenge,
-    code_challenge_method: 's256',
-  });
-  return `${base}/auth/v1/authorize?${q}`;
-}
-
-/* A spent authorisation code left in the address bar is replayed on every
-   reload and rejected every time. Strip it — and the error fields, which
-   would otherwise persist an error state the user has already seen. */
-export function stripAuthParams(href) {
-  const u = new URL(href);
-  for (const k of ['code', 'state', 'error', 'error_code', 'error_description']) {
-    u.searchParams.delete(k);
-  }
-  u.hash = '';
-  return u.toString().replace(/\?$/, '');
-}
-
-export async function beginSignIn({
-  base = authBase(),
-  redirectTo = globalThis.location?.origin + globalThis.location?.pathname,
-  store,
-  navigate = (u) => { globalThis.location.assign(u); },
-} = {}) {
-  const verifier = makeVerifier();
-  const challenge = await makeChallenge(verifier);
-  /* Stored before navigating, never after: the redirect can happen at any
-     point once assign() is called. */
-  saveVerifier(verifier, store);
-  const url = authorizeUrl(base, { redirectTo, challenge });
-  navigate(url);
-  return url;
-}
-
-export async function completeSignIn({
-  href = globalThis.location?.href,
-  base = authBase(),
-  apikey = cfg.key,
-  fetchImpl = globalThis.fetch,
-  store,
-  now = Date.now(),
-} = {}) {
-  const code = new URL(href).searchParams.get('code');
-  if (!code) return null;
-
-  const verifier = readVerifier(store);
-  if (!verifier) throw new Error('sign-in state missing — start sign-in again');
-
-  /* The verifier is spent the moment its code is presented, however that
-     turns out, so every exit drops it rather than only the successful one.
-     A refused exchange used to leave it behind: a dead secret in storage
-     indefinitely, and the next stray ?code= — a bookmarked redirect being
-     reloaded, someone else's pasted link — then looked like a sign-in in
-     progress instead of the "start sign-in again" it is. In a finally, so a
-     path added later cannot forget. */
-  try {
-    const res = await fetchImpl(`${base}/auth/v1/token?grant_type=pkce`, {
-      method: 'POST',
-      headers: { apikey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auth_code: code, code_verifier: verifier }),
-    });
-    if (!res.ok) throw new Error(`sign-in failed: ${res.status} ${await res.text?.() ?? ''}`);
-
-    const session = sessionFromTokenResponse(await res.json(), now);
-    if (!session) throw new Error('sign-in failed: no token in response');
-    clearSession(store);
-    saveSession(session, store);
-    return session;
-  } finally {
-    clearVerifier(store);
-  }
-}
 
 /* ---------- email and password ----------
    The whole of what this app asks of an identity provider: a way to make an
