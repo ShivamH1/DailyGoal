@@ -523,7 +523,10 @@ function commitProfile() {
      is a statement about THIS device's cache. */
   const saved = saveDoc('profile', profileDoc);
   if (!saved) setSaveStatus('⚠ not saved', 'var(--warn)');
-  markDocPending('profile');
+  /* The stamp of the write being queued, not of whatever is in storage: when
+     saveDoc just failed, those are different documents, and the flush has to
+     be able to tell that the write this flag stands for never got cached. */
+  markDocPending('profile', profileDoc.u);
   armFlush();
   renderProfile();
   /* profile.lanes is half the input to the week gate, and this function is
@@ -589,7 +592,7 @@ function commitSchedule() {
   scheduleDoc = { value: week, u: new Date().toISOString() };
   const saved = saveDoc('schedule', scheduleDoc);
   if (!saved) setSaveStatus('⚠ not saved', 'var(--warn)');
-  markDocPending('schedule');
+  markDocPending('schedule', scheduleDoc.u);
   armFlush();
   renderWeekPanels();
   return saved;
@@ -1442,7 +1445,7 @@ async function initSync() {
          the value did not change, only when we last stood behind it. */
       scheduleDoc = { value: scheduleDoc.value, u: new Date().toISOString() };
       saveDoc('schedule', scheduleDoc);
-      markDocPending('schedule');
+      markDocPending('schedule', scheduleDoc.u);
       armFlush();
       setSaveStatus(KEPT_LOCAL_WEEK, 'var(--warn)');
     } else {
