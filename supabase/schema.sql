@@ -142,6 +142,29 @@ grant select, insert, update, delete on user_schedule to authenticated;
 -- commit but not yet exercised against the live project). Applying it first
 -- would orphan the owner's existing rows behind a policy that no longer
 -- matches anything, with no anon fallback left to read them back out.
+--
+-- It must not be left undone either, and the reason is sharper than "tidy
+-- up": single_user above names no role, so it applies to `public` — every
+-- role, `authenticated` included — and Postgres ORs policies together.
+-- Until it is dropped, EVERY signed-in account reads the owner's rows on
+-- top of its own. Measured on the live project with two throwaway accounts
+-- driven through sync.js: each saw its own day plus exactly the owner's
+-- five, and each saw only its own day once this block had been applied.
+-- So the deploy order is not free: this branch must not be the build the
+-- public signs into while single_user still stands.
 -- ============================================================
 drop policy if exists single_user on daily_progress;
 revoke all on daily_progress from anon;
+
+-- The two document tables were never granted to anon by this file, but
+-- Supabase's default privileges on a new table hand the role all seven
+-- anyway — checked on the live project, where anon holds
+-- SELECT,INSERT,UPDATE,DELETE,REFERENCES,TRIGGER,TRUNCATE on both. RLS is
+-- what actually protects them (own_profile and own_schedule are `to
+-- authenticated`, so an anon read returns zero rows and an anon write is
+-- refused as an RLS violation — both verified against the project), so this
+-- is defence in depth rather than a fix. It is still worth doing: a policy
+-- added later without a role, exactly as single_user was written, would
+-- otherwise be reachable by the anon key too.
+revoke all on user_profile from anon;
+revoke all on user_schedule from anon;
