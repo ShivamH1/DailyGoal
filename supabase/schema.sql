@@ -167,3 +167,25 @@ revoke all on daily_progress from anon;
 -- otherwise be reachable by the anon key too.
 revoke all on user_profile from anon;
 revoke all on user_schedule from anon;
+
+-- ============================================================
+-- Applied migrations — what has actually been run against the live project,
+-- so a reader can tell this file's intent from the database's state.
+-- ============================================================
+-- v1                 · applied before this branch. <USER_ID> above is a
+--                      placeholder: the statement was run with a real uuid,
+--                      so re-running this section as written would create a
+--                      policy matching nothing.
+-- v2 (multi-user)    · applied 2026-09-01. PK widened to (user_id, date),
+--                      user_profile and user_schedule created, own_rows /
+--                      own_profile / own_schedule added, schema cache
+--                      reloaded. Verified: two throwaway accounts driven
+--                      through the shipping sync.js could not see each
+--                      other's rows, profile or week.
+-- Owner's rows       · migrated 2026-09-01. The five pre-account rows
+--   (Task 7)           (2026-08-20, 24, 25, 26, 27) moved from the uuid in
+--                      .env onto the owner's account uuid. Checked before
+--                      and after: five moved, none left behind, none
+--                      duplicated, and no date collided with a row the
+--                      account already held — which the composite PK would
+--                      have refused halfway through.
