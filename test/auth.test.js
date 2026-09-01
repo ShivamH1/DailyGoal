@@ -376,3 +376,152 @@ test('completeSignIn discards the verifier when the exchange fails too', async (
     assert.equal(readVerifier(store), null, `${why}: the spent verifier is gone`);
   }
 });
+
+/* ---------- email + password ---------- */
+import {
+  signIn, signUp, passwordProblem, MIN_PASSWORD,
+  CREDENTIALS_MESSAGE, SIGNUP_REFUSED_MESSAGE, RATE_LIMIT_MESSAGE, isCredentialsError,
+} from '../auth.js';
+
+const tokenResponse = (body = {}) => ({
+  ok: true,
+  status: 200,
+  json: async () => ({ access_token: 'AT', refresh_token: 'RT', expires_in: 3600, user: { id: 'u1', email: 'me@test' }, ...body }),
+  text: async () => '',
+});
+const refused = (status, body) => ({ ok: false, status, text: async () => JSON.stringify(body), json: async () => body });
+
+test('signIn exchanges the password for a session and stores it', async () => {
+  const store = fakeStore();
+  let seen = null;
+  const session = await signIn({
+    email: ' me@test ', password: 'correct horse',
+    base: 'https://p.supabase.co', apikey: 'ANON',
+    fetchImpl: async (url, opts) => { seen = { url, opts }; return tokenResponse(); },
+    store, now: 0,
+  });
+  assert.match(seen.url, /\/auth\/v1\/token\?grant_type=password$/);
+  assert.equal(seen.opts.headers.apikey, 'ANON');
+  /* Trimmed: a keyboard that capitalises and pads is not a different
+     account, and the server would treat " me@test " as one. */
+  assert.deepEqual(JSON.parse(seen.opts.body), { email: 'me@test', password: 'correct horse' });
+  assert.equal(session.access_token, 'AT');
+  assert.deepEqual(loadSession(store), session);
+});
+
+test('signIn says the same thing for a wrong password as for an unknown email', async () => {
+  /* Anything that distinguishes the two turns the sign-in form into a test
+     for whether an address has an account here. Supabase answers both with
+     the same 400; this pins that we do not decorate one of them. */
+  const messages = [];
+  for (const body of [{ error: 'invalid_grant', error_description: 'Invalid login credentials' },
+                      { error: 'invalid_grant', error_description: 'Email not confirmed' }]) {
+    await signIn({
+      email: 'me@test', password: 'x'.repeat(MIN_PASSWORD),
+      base: 'https://p', apikey: 'A', fetchImpl: async () => refused(400, body), store: fakeStore(), now: 0,
+    }).catch((e) => messages.push(e.message));
+  }
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0], messages[1]);
+  assert.equal(messages[0], CREDENTIALS_MESSAGE);
+});
+
+test('a server that broke is not reported as a wrong password', async () => {
+  /* "Email or password is incorrect" sends the user to change something that
+     was never wrong. A 500 is ours, not theirs. */
+  let err = null;
+  await signIn({
+    email: 'me@test', password: 'x'.repeat(MIN_PASSWORD),
+    base: 'https://p', apikey: 'A', fetchImpl: async () => refused(500, {}), store: fakeStore(), now: 0,
+  }).catch((e) => { err = e; });
+  assert.ok(err);
+  assert.equal(isCredentialsError(err), false);
+  assert.doesNotMatch(err.message, /password/i);
+});
+
+test('no password reaches storage, on success or on failure', async () => {
+  const PASSWORD = 'correct horse battery';
+  for (const res of [tokenResponse(), refused(400, {})]) {
+    const store = fakeStore();
+    await signIn({
+      email: 'me@test', password: PASSWORD, base: 'https://p', apikey: 'A',
+      fetchImpl: async () => res, store, now: 0,
+    }).catch(() => {});
+    assert.doesNotMatch(JSON.stringify(store._dump()), /correct horse/);
+  }
+});
+
+test('signUp returns a session when the project confirms accounts itself', async () => {
+  const store = fakeStore();
+  let seen = null;
+  const { session, needsConfirmation } = await signUp({
+    email: 'new@test', password: 'x'.repeat(MIN_PASSWORD),
+    base: 'https://p.supabase.co', apikey: 'ANON',
+    fetchImpl: async (url, opts) => { seen = { url, opts }; return tokenResponse(); },
+    store, now: 0,
+  });
+  assert.match(seen.url, /\/auth\/v1\/signup$/);
+  assert.equal(needsConfirmation, false);
+  assert.equal(session.access_token, 'AT');
+  assert.deepEqual(loadSession(store), session);
+});
+
+test('signUp reports a pending confirmation rather than inventing a session', async () => {
+  /* With confirmation on, the signup response carries a user and no token.
+     Storing anything there would sign in an account that cannot yet act,
+     and the form has to say "check your email" instead. */
+  const store = fakeStore();
+  const { session, needsConfirmation } = await signUp({
+    email: 'new@test', password: 'x'.repeat(MIN_PASSWORD), base: 'https://p', apikey: 'A',
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ id: 'u2', email: 'new@test' }), text: async () => '' }),
+    store, now: 0,
+  });
+  assert.equal(session, null);
+  assert.equal(needsConfirmation, true);
+  assert.equal(loadSession(store), null);
+});
+
+test('a password below the minimum never leaves the device', async () => {
+  let sent = false;
+  await assert.rejects(signUp({
+    email: 'new@test', password: 'x'.repeat(MIN_PASSWORD - 1), base: 'https://p', apikey: 'A',
+    fetchImpl: async () => { sent = true; return tokenResponse(); }, store: fakeStore(), now: 0,
+  }), new RegExp(`${MIN_PASSWORD} characters`));
+  assert.equal(sent, false, 'a doomed password is not put on the wire');
+});
+
+test('signUp will not say whether an email is already registered', async () => {
+  /* Supabase answers a taken address with 400 "User already registered"
+     once auto-confirm is on. Passing that through makes the signup form an
+     address-checker, so every refusal reads the same. */
+  const messages = [];
+  for (const body of [{ msg: 'User already registered' }, { msg: 'Signups not allowed for this instance' }]) {
+    await signUp({
+      email: 'taken@test', password: 'x'.repeat(MIN_PASSWORD), base: 'https://p', apikey: 'A',
+      fetchImpl: async () => refused(400, body), store: fakeStore(), now: 0,
+    }).catch((e) => messages.push(e.message));
+  }
+  assert.deepEqual(messages, [SIGNUP_REFUSED_MESSAGE, SIGNUP_REFUSED_MESSAGE]);
+});
+
+test('passwordProblem names the rule, and passes anything long enough', () => {
+  assert.match(passwordProblem('short'), new RegExp(`${MIN_PASSWORD} characters`));
+  assert.equal(passwordProblem('x'.repeat(MIN_PASSWORD)), '');
+  assert.match(passwordProblem(undefined), new RegExp(`${MIN_PASSWORD} characters`));
+});
+
+test('being rate-limited is not reported as a wrong password either', async () => {
+  /* Supabase throttles repeated attempts with a 429. Reading that as bad
+     credentials tells someone who typed their password correctly that they
+     did not — and invites them to keep trying, which is the one thing that
+     cannot help. Both entry points say the same thing. */
+  for (const call of [signIn, signUp]) {
+    let err = null;
+    await call({
+      email: 'me@test', password: 'x'.repeat(MIN_PASSWORD), base: 'https://p', apikey: 'A',
+      fetchImpl: async () => refused(429, { msg: 'over_request_rate_limit' }), store: fakeStore(), now: 0,
+    }).catch((e) => { err = e; });
+    assert.equal(err?.message, RATE_LIMIT_MESSAGE);
+    assert.equal(isCredentialsError(err), false);
+  }
+});

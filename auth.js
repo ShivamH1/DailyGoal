@@ -220,6 +220,103 @@ export async function completeSignIn({
   }
 }
 
+/* ---------- email and password ----------
+   The whole of what this app asks of an identity provider: a way to make an
+   account and a way to get a session for one. Both hand back the same token
+   response the refresh path already understands, so everything downstream —
+   storage, expiry, single-flight refresh, authedFetch's bearer — is
+   untouched by which of the three routes produced the session.
+
+   A password is an argument here and nothing else. It goes into a request
+   body and is dropped: never stored, never logged, never in a URL, and never
+   put on the wire at all when it cannot succeed. */
+
+export const MIN_PASSWORD = 8;
+
+/* One message for every way a sign-in can be refused, because the
+   alternatives are worse than unhelpful: "no account with that email" turns
+   the form into a test for whether an address is registered here, and "email
+   not confirmed" answers the same question for a subset. Supabase already
+   answers both with an identical 400; this is us not decorating it. */
+export const CREDENTIALS_MESSAGE = 'Email or password is incorrect';
+
+/* Same reasoning for registration, where the leak is sharper: with
+   auto-confirm on, Supabase says "User already registered" outright. */
+export const SIGNUP_REFUSED_MESSAGE =
+  "That email can't be registered. If you already have an account, sign in instead.";
+
+/* A 429 is the one refusal that must NOT read as bad credentials: it tells
+   someone who typed their password correctly that they did not, and invites
+   them to keep trying, which is the only thing that cannot help. */
+export const RATE_LIMIT_MESSAGE = 'Too many attempts. Wait a minute and try again.';
+
+export const isCredentialsError = (err) =>
+  err instanceof Error && err.message === CREDENTIALS_MESSAGE;
+
+/* Length only. Composition rules ("one capital, one symbol") push people
+   towards Password1! and away from the length that actually costs an
+   attacker anything; the server holds the same minimum, which is the rule
+   that counts — this one saves a round trip and a doomed password's trip
+   over the wire. */
+export const passwordProblem = (password) =>
+  (typeof password === 'string' && password.length >= MIN_PASSWORD)
+    ? ''
+    : `Use at least ${MIN_PASSWORD} characters`;
+
+/* Trimmed, because a keyboard that pads is not a different account and the
+   server would treat " me@test " as one. Not otherwise validated: address
+   syntax is the server's business, and a client-side pattern that thinks it
+   knows better is how valid addresses get refused. */
+const credentials = (email, password) =>
+  JSON.stringify({ email: String(email || '').trim(), password: String(password || '') });
+
+const refusal = (status, generic) => {
+  if (status === 429) return RATE_LIMIT_MESSAGE;
+  return status >= 400 && status < 500 ? generic : `auth request failed: ${status}`;
+};
+
+export async function signIn({
+  email, password,
+  base = authBase(), apikey = cfg.key,
+  fetchImpl = globalThis.fetch, store, now = Date.now(),
+} = {}) {
+  const res = await fetchImpl(`${base}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { apikey, 'Content-Type': 'application/json' },
+    body: credentials(email, password),
+  });
+  if (!res.ok) throw new Error(refusal(res.status, CREDENTIALS_MESSAGE));
+  const session = sessionFromTokenResponse(await res.json(), now);
+  if (!session) throw new Error('sign-in failed: no token in response');
+  saveSession(session, store);
+  return session;
+}
+
+/* Returns { session, needsConfirmation } rather than a session, because the
+   response has two legitimate shapes and they mean opposite things. With
+   confirmation off the account is live and a token comes back. With it on
+   the body carries a user and NO token — signing that in would put an
+   account on screen that cannot read or write a single row, so it is
+   reported as pending and the form says to check the inbox instead. */
+export async function signUp({
+  email, password,
+  base = authBase(), apikey = cfg.key,
+  fetchImpl = globalThis.fetch, store, now = Date.now(),
+} = {}) {
+  const problem = passwordProblem(password);
+  if (problem) throw new Error(problem);
+  const res = await fetchImpl(`${base}/auth/v1/signup`, {
+    method: 'POST',
+    headers: { apikey, 'Content-Type': 'application/json' },
+    body: credentials(email, password),
+  });
+  if (!res.ok) throw new Error(refusal(res.status, SIGNUP_REFUSED_MESSAGE));
+  const session = sessionFromTokenResponse(await res.json(), now);
+  if (!session) return { session: null, needsConfirmation: true };
+  saveSession(session, store);
+  return { session, needsConfirmation: false };
+}
+
 /* Single-flight guard. The minute timer, a visibilitychange and a queued
    flush can all want a token in the same instant; two refreshes would race,
    and Supabase rotates the refresh token, so the loser's is already dead. */
