@@ -122,6 +122,10 @@ export function saveVerifier(verifier, store) {
   try { (store || defaultStore()).setItem(VERIFIER_KEY, verifier); return true; } catch { return false; }
 }
 
+export function clearVerifier(store) {
+  try { (store || defaultStore()).removeItem(VERIFIER_KEY); } catch { /* storage off */ }
+}
+
 export function readVerifier(store) {
   try { return (store || defaultStore()).getItem(VERIFIER_KEY); } catch { return null; }
 }
@@ -191,18 +195,29 @@ export async function completeSignIn({
   const verifier = readVerifier(store);
   if (!verifier) throw new Error('sign-in state missing — start sign-in again');
 
-  const res = await fetchImpl(`${base}/auth/v1/token?grant_type=pkce`, {
-    method: 'POST',
-    headers: { apikey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ auth_code: code, code_verifier: verifier }),
-  });
-  if (!res.ok) throw new Error(`sign-in failed: ${res.status} ${await res.text?.() ?? ''}`);
+  /* The verifier is spent the moment its code is presented, however that
+     turns out, so every exit drops it rather than only the successful one.
+     A refused exchange used to leave it behind: a dead secret in storage
+     indefinitely, and the next stray ?code= — a bookmarked redirect being
+     reloaded, someone else's pasted link — then looked like a sign-in in
+     progress instead of the "start sign-in again" it is. In a finally, so a
+     path added later cannot forget. */
+  try {
+    const res = await fetchImpl(`${base}/auth/v1/token?grant_type=pkce`, {
+      method: 'POST',
+      headers: { apikey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auth_code: code, code_verifier: verifier }),
+    });
+    if (!res.ok) throw new Error(`sign-in failed: ${res.status} ${await res.text?.() ?? ''}`);
 
-  const session = sessionFromTokenResponse(await res.json(), now);
-  if (!session) throw new Error('sign-in failed: no token in response');
-  clearSession(store);          /* drops the spent verifier */
-  saveSession(session, store);
-  return session;
+    const session = sessionFromTokenResponse(await res.json(), now);
+    if (!session) throw new Error('sign-in failed: no token in response');
+    clearSession(store);
+    saveSession(session, store);
+    return session;
+  } finally {
+    clearVerifier(store);
+  }
 }
 
 /* Single-flight guard. The minute timer, a visibilitychange and a queued

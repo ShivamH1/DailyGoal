@@ -354,3 +354,25 @@ test('no session shows the sign-in gate', () => {
 test('a session shows the app', () => {
   assert.equal(authView(true, { access_token: 'a', user_id: 'u' }), 'app');
 });
+
+test('completeSignIn discards the verifier when the exchange fails too', async () => {
+  /* A verifier is single-use: the code it was minted for has been presented
+     and refused, so nothing can ever be exchanged with it again. Left in
+     storage it is a dead secret sitting there indefinitely, and it makes
+     the next stray ?code= — a reload of a bookmarked redirect, a link
+     someone else pasted — look like a sign-in in progress rather than the
+     "start sign-in again" it is. Both failing exits drop it: an exchange
+     the server refused, and one that came back without a token. */
+  for (const [why, res] of [
+    ['refused', { ok: false, status: 400, text: async () => 'invalid grant' }],
+    ['no token', { ok: true, json: async () => ({}) }],
+  ]) {
+    const store = fakeStore();
+    saveVerifier('VERIFIER', store);
+    await assert.rejects(completeSignIn({
+      href: 'http://x/?code=C', base: 'https://p', apikey: 'A',
+      fetchImpl: async () => res, store, now: 0,
+    }), /sign-in failed/, why);
+    assert.equal(readVerifier(store), null, `${why}: the spent verifier is gone`);
+  }
+});
