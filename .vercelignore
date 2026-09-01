@@ -15,4 +15,11 @@ weekly-innings-spec.md
 # Never uploaded: this holds the service_role key and the database password.
 .env
 .env.*
+
+# Never uploaded: the owner's personal profile content, gitignored for the
+# same reason — but the CLI deploy reads only THIS file, not .gitignore, and
+# outputDirectory "." serves whatever uploads. Without this line the file the
+# project scrubbed from its codebase would sit at /seed-profile.json on the
+# deployment: the guessable-URL class this file's own header warns about.
+seed-profile.json
 .DS_Store

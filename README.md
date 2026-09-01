@@ -1,6 +1,6 @@
 # Weekly Innings
 
-A cricket-scoreboard-themed habit tracker and weekly schedule for balancing a job, a part-time M.Tech, and daily fitness. It is a zero-dependency, installable PWA: today's scorecard (study, workout, sleep, and a one-line note) ticks instantly to `localStorage`, then syncs to Supabase in the background — with an offline queue so ticks made without a connection are not lost.
+A cricket-scoreboard-themed habit tracker and weekly schedule. It is a zero-dependency, installable PWA with real accounts: today's scorecard (three core habits you name yourself, extra habits, and a one-line note) ticks instantly to `localStorage`, then syncs to Supabase in the background — with an offline queue so ticks made without a connection are not lost. Habits, the week's schedule, deadlines and rules are all per-account data, set up by a first-run wizard and editable in the app.
 
 ## Local dev
 
@@ -16,33 +16,66 @@ Then open `http://localhost:8080`. Opening `index.html` directly via `file://` w
 npm test
 ```
 
-64 tests, 0 failures, across `schedule.js`, `storage.js`, `progress.js`, `sync.js`, and `exams.js`.
+The suite runs on `node --test` alone — zero dependencies is a constraint the
+tests enforce (`package.json` declares none, and the acceptance run checks
+that stays true).
 
 ## Supabase setup
 
-The app talks to one Postgres table (`daily_progress`) directly over PostgREST — no SDK.
+The app talks to Postgres over PostgREST — no SDK. Sign-in is an email and a
+password through Supabase Auth: two requests, no redirect out of the app, no
+client secret, and nothing to configure with a third party.
 
-### `.env` (local, gitignored)
+### 1. Authentication settings
 
-Create a `.env` at the repo root with these three values, read by `tools/make-config.mjs`:
+In Supabase → Authentication:
+
+- **Sign In / Providers → Email** must be enabled. It is on by default, and
+  it is the only provider this app uses.
+- **Confirm email** decides what registering does. With it OFF, a new
+  account is signed in immediately. With it ON, Supabase emails a
+  confirmation link and the account can do nothing until it is clicked —
+  which needs a real SMTP provider configured, because the built-in mailer
+  sends a couple of messages an hour and is documented as test-only. The app
+  handles both: a registration that comes back without a session says to
+  check that inbox instead of pretending to be signed in. Measured on this
+  project with confirmation ON and no SMTP: the second registration attempt
+  came back `429 over_email_send_rate_limit`. That is the failure mode, and
+  it looks to the user like the sign-up being throttled.
+- Registration goes through Supabase's own address validation, which rejects
+  `@example.com` outright (`email_address_invalid`). The admin API does not,
+  which is why a throwaway account created with the service key can hold an
+  address that no one could have registered.
+- **Minimum password length** should be at least 8, matching `MIN_PASSWORD`
+  in `auth.js`. The client checks the same number before sending, but the
+  server setting is the rule — the client's copy only saves a round trip.
+- **Leaked password protection**, if the plan offers it, is worth having on.
+  It costs nothing here and refuses passwords already known to be breached.
+
+No redirect allow-list, no provider keys, no callback URL: none of that
+exists in this flow any more.
+
+### 2. `.env` (local, gitignored)
+
+Create a `.env` at the repo root with two values, read by
+`tools/make-config.mjs`. Either spelling of each name works — the dashboard
+uses one pair, the wider ecosystem the other:
 
 ```
-PROJECT_URL=...   # the Supabase project URL
-PUBLIC_KEY=...    # the anon / publishable key
-USER_ID=...       # uuid, matching the RLS policy in supabase/schema.sql
+PROJECT_URL=...   # or SUPABASE_URL — the project URL
+PUBLIC_KEY=...    # or SUPABASE_ANON_KEY — the anon / publishable key
 ```
 
-`.env` also holds `SECRET_KEY` (the `service_role` key, which bypasses RLS
-entirely) and `DATABASE_URL` (contains the database password). **Nothing in
-this app reads either one** — they exist only because the Supabase dashboard
-hands out all five together — and neither must ever be deployed or
-committed.
+`USER_ID` is gone: rows are keyed to `auth.uid()` and RLS checks the token,
+so a `.env` that still declares it is simply ignored. `.env` may also hold
+`SECRET_KEY` (the `service_role` key, which bypasses RLS entirely) and
+`DATABASE_URL` (contains the database password). **Nothing in this app reads
+either one** — and neither must ever be deployed or committed.
 
 ### Generating `config.js`
 
-`config.js` is generated, gitignored, and exports `SUPABASE_URL`,
-`SUPABASE_ANON_KEY`, and `USER_ID` for the browser to import. Regenerate it
-with:
+`config.js` is generated, gitignored, and exports `SUPABASE_URL` and
+`SUPABASE_ANON_KEY` for the browser to import. Regenerate it with:
 
 ```
 npm run config
@@ -52,28 +85,48 @@ See `config.example.js` for the shape of the generated file.
 
 ### Vercel
 
-In the Vercel project's environment variables, set `PROJECT_URL`,
-`PUBLIC_KEY`, and `USER_ID` (same three names as `.env`). The build command
+In the Vercel project's environment variables, set `PROJECT_URL` and
+`PUBLIC_KEY` (same names as `.env`). The build command
 (`node tools/make-config.mjs`, see `vercel.json`) generates `config.js` from
 those at deploy time. Never set `SECRET_KEY` or `DATABASE_URL` there.
 
-### Schema
+### Schema, in order
 
-`supabase/schema.sql` records the `daily_progress` table and its RLS policy
-and is **already applied** to the live project — it's kept in the repo as
-the source of truth and for rebuilding the table from scratch, not as a
-migration to run again.
+`supabase/schema.sql` is layered, and the order matters:
 
-## The no-auth trade-off
+1. **v1** — the original single-user `daily_progress` table. Already applied
+   to the live project.
+2. **v2** — additive multi-user: the `(user_id, date)` primary key,
+   `user_profile` and `user_schedule`, and per-account RLS for the
+   `authenticated` role. Must be applied before a second account can exist —
+   under the old key, two users cannot both tick today.
+3. **Phase-3 cutover** — drops the v1 policy and revokes `anon`'s table
+   access. Applied **last**, and only after any pre-account rows have been
+   migrated onto a real account (the Task 7 record at the end of the file):
+   after the revocation, orphaned rows are reachable only with the service
+   key.
 
-There is no login. The app has no auth, so the Supabase anon key ships to
-the browser by design. Row-level security is the entire security model:
-every row is pinned to a single hardcoded `USER_ID`, so the anon key can
-only ever see and write that one user's rows — but within that table,
-**anyone who has the deployed URL can read and write it**, because the key
-in the shipped bundle grants exactly that. This is acceptable only because
-it is a single-user personal tracker with nothing sensitive in it; it is not
-a pattern to reuse for anything with real stakes.
+The file is kept as the source of truth and for rebuilding from scratch; the
+guards make the v2 section safe to re-run.
+
+## The security model
+
+The app has real accounts. Row-level security grants each `authenticated`
+user exactly the rows where `user_id = auth.uid()` — a second account
+cannot read or write the first's data, and the server, not the client,
+enforces that. The anon key still ships to the browser (it has to: it is
+what the sign-in and registration requests are addressed with), but the
+anon key **alone grants nothing** once the phase-3 cutover has revoked the
+`anon` role's table access. A token, not a key, is what reads and writes.
+
+A password is only ever an argument: it goes into a request body and is
+dropped, never stored, never logged, never in a URL, and not sent at all
+when it is too short to succeed. The session's JWT does live in
+`localStorage` — an offline-first app has to survive a reload — which is an
+XSS exposure, and the mitigation is that no user-authored string is ever
+interpolated into `innerHTML` anywhere in this codebase. Every refused
+sign-in says the same thing, so the gate cannot be used to find out whether
+an address has an account here.
 
 ## Deploy
 
@@ -90,17 +143,12 @@ prototype out of the deployment — but deliberately keeps `tools/`, because
 the build command (`node tools/make-config.mjs`) runs against the uploaded
 files and would fail without it.
 
-## Changing the schedule
+## Changing the schedule or deadlines
 
-`schedule.js` is the single source of truth for the week. It exports the
-`WEEK` timeline data that both the "Schedule" tabs and the NOW/NEXT banner
-render from — edit a block there and both surfaces update together.
-
-## Changing exam dates
-
-Exam windows live in `exams.js` as the `EXAMS` array (label + list of
-dates). The dates currently checked in are the real BITS WILP EC-1, EC-2,
-and EC-3 evaluation windows for 2026, not placeholders.
+There is nothing to edit in the code: the week, the habits and the deadline
+windows are all account data, created by the first-run wizard and changed in
+the app (Edit profile, and the week editor). The repo ships no one's
+schedule and no one's exam dates.
 
 ## Verify after first deploy
 

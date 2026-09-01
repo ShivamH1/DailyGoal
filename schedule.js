@@ -1,122 +1,10 @@
-/* The week as data. Drives both the rendered timeline and the NOW banner.
-   start/end are minutes from midnight, IST. */
+/* Pure functions over a week. Loaded identically by the browser and by
+   node --test, like progress.js and profile.js — no imports, no document.
+
+   The week itself is no longer data this module owns: it is supplied by the
+   caller (a per-user document) and validated against that user's own lanes. */
 
 export const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-
-const hard = { text: 'Hard', cls: 'hard' };
-const easy = { text: 'Easy', cls: 'easy' };
-
-/* Shared weekday scaffolding — every Mon-Fri day has the same shape around
-   its study subject and its workout. */
-const wake  = { time: '6:30', start: 390, end: 405, label: 'Wake up', detail: '', lane: 'rest' };
-const bfast = { time: '7:45 – 8:45', start: 465, end: 525, label: 'Breakfast &amp; get ready', detail: '', lane: 'rest' };
-const work  = { time: '9:30 – 6:30', start: 570, end: 1110, label: 'Work', detail: '', lane: 'work' };
-const dinner = { time: '8:15 – 9:15', start: 1215, end: 1275, label: 'Shower &amp; dinner', detail: '', lane: 'rest' };
-const free  = { time: '9:15 – 10:15', start: 1275, end: 1335, label: 'Free time', detail: '', lane: 'rest' };
-const lights = { time: '11:00', start: 1380, end: 1410, label: 'Lights out', detail: '', lane: 'rest' };
-
-const study = (subject, detail) =>
-  ({ time: '6:45 – 7:45', start: 405, end: 465, label: 'Study', subject, detail, lane: 'study' });
-
-const evening = (label, detail, effort) =>
-  ({ time: '7:15 – 8:15', start: 1155, end: 1215, label, detail, effort, lane: 'fit' });
-
-export const WEEK = {
-  mon: {
-    title: 'Monday', tag: 'Consolidation day',
-    note: 'Replay the weekend&rsquo;s lectures across all four subjects while they&rsquo;re fresh. Decide which topics Tue–Fri mornings will cover.',
-    blocks: [
-      { ...wake, detail: 'No phone for the first 15 minutes' },
-      { ...study('All subjects', 'Consolidate Sat/Sun classes · plan the week&rsquo;s topics'), label: 'Study — weekend review' },
-      bfast,
-      { ...work, detail: 'Truworth Wellness' },
-      evening('Home workout — full body', 'Push-ups, squats, lunges, plank circuit · 3–4 rounds', hard),
-      dinner,
-      { ...free, detail: 'Genuinely free — no guilt' },
-      lights,
-    ],
-  },
-  tue: {
-    title: 'Tuesday', tag: 'Maths morning',
-    note: 'Maths Foundation gets the freshest brain of the week — everything in ML and DL stands on it. The evening walk keeps the body moving while it recovers from Monday.',
-    blocks: [
-      wake,
-      study('Maths Foundation for ML', 'Linear algebra, calculus, optimisation · work problems by hand'),
-      bfast, work,
-      evening('Brisk walk — 60 min', 'Recovery pace · podcast or lecture audio if you like', easy),
-      dinner, free, lights,
-    ],
-  },
-  wed: {
-    title: 'Wednesday', tag: 'Mid-week double',
-    note: 'Machine Learning in the morning, a run in the evening, then one light study hour — the only weekday with two study blocks, so the run stays moderate.',
-    blocks: [
-      wake,
-      study('Machine Learning', 'Algorithms &amp; theory · connect back to Tuesday&rsquo;s maths'),
-      bfast, work,
-      evening('Run — 40–50 min', 'Steady pace, or easy intervals · finish able to talk', { text: 'Moderate', cls: '' }),
-      dinner,
-      { time: '9:15 – 10:15', start: 1275, end: 1335, label: 'Study — light hour', subject: 'Weakest subject',
-        detail: 'Lecture videos &amp; notes only — no heavy problem-solving at night', lane: 'study' },
-      lights,
-    ],
-  },
-  thu: {
-    title: 'Thursday', tag: 'Power play',
-    note: 'Deep Learning builds directly on Tuesday&rsquo;s maths and Wednesday&rsquo;s ML — that&rsquo;s why it sits here. Last hard workout of the week; the load tapers from tomorrow.',
-    blocks: [
-      wake,
-      study('Deep Learning', 'Theory + code · implement small pieces in Python'),
-      bfast, work,
-      evening('Home workout — strength &amp; core', 'Push-up variations, split squats, core circuit', hard),
-      dinner, free, lights,
-    ],
-  },
-  fri: {
-    title: 'Friday', tag: 'Taper &amp; recover',
-    note: 'Statistical Methods closes the study week. Easy walk plus stretching in the evening — you want loose hamstrings, not sore ones, for tomorrow&rsquo;s match.',
-    blocks: [
-      wake,
-      study('Statistical Methods', 'Distributions, inference, hypothesis testing · flag doubts for weekend classes'),
-      bfast, work,
-      evening('Easy walk + full stretch', '30 min walk · 20 min hips, hamstrings, shoulders', { text: 'Very easy', cls: 'easy' }),
-      { time: '8:15 onwards', start: 1215, end: 1380, label: 'Free evening',
-        detail: 'Fully unclaimed — this is the slack in the system', lane: 'rest' },
-      { ...lights, detail: 'Match tomorrow — protect the sleep' },
-    ],
-  },
-  sat: {
-    title: 'Saturday', tag: 'Match day · Class day',
-    note: 'Classes in the morning, cricket in the evening. The nap in between is not optional — it&rsquo;s what makes both halves work.',
-    blocks: [
-      { time: '7:30', start: 450, end: 465, label: 'Wake up — slightly later', detail: 'Optional 20 min mobility to loosen up', lane: 'rest' },
-      { time: 'Morning', start: 540, end: 780, label: 'BITS WILP contact classes', subject: 'Per timetable',
-        detail: 'Attend live · ask the doubts flagged on Friday', lane: 'study' },
-      { time: '1:00 – 2:00', start: 780, end: 840, label: 'Lunch', detail: 'Proper meal + hydrate — you&rsquo;ll sweat it out at 3:30', lane: 'rest' },
-      { time: '2:00 – 3:00', start: 840, end: 900, label: 'Nap', detail: '', lane: 'rest' },
-      { time: '3:30 – 7:30', start: 930, end: 1170, label: 'Cricket match', effort: { text: 'Match', cls: 'hard' },
-        detail: 'This is the workout — tick it on the scorecard', lane: 'cricket' },
-      { time: '8:00 – 9:00', start: 1200, end: 1260, label: 'Dinner &amp; wind down', detail: '', lane: 'rest' },
-      { time: 'Evening', start: 1260, end: 1380, label: 'Completely free', detail: 'No study, no assignments, no guilt', lane: 'rest' },
-      lights,
-    ],
-  },
-  sun: {
-    title: 'Sunday', tag: 'Match day · Assignments',
-    note: 'Class or assignments in the morning — rotate the assignment subject by whatever&rsquo;s due next. The day ends when the match ends.',
-    blocks: [
-      { time: '7:30', start: 450, end: 465, label: 'Wake up', detail: '', lane: 'rest' },
-      { time: 'Morning', start: 540, end: 780, label: 'Class — or assignment block (2 hrs)', subject: 'Rotating',
-        detail: 'Whichever subject has the nearest deadline', lane: 'study' },
-      { time: '1:00 – 2:00', start: 780, end: 840, label: 'Lunch', detail: '', lane: 'rest' },
-      { time: '2:00 – 3:00', start: 840, end: 900, label: 'Nap', detail: '', lane: 'rest' },
-      { time: '3:30 – 7:30', start: 930, end: 1170, label: 'Cricket match', effort: { text: 'Match', cls: 'hard' }, detail: '', lane: 'cricket' },
-      { time: '8:00 – 9:00', start: 1200, end: 1260, label: 'Dinner &amp; recovery', detail: 'Stretch 10 min · big glass of water', lane: 'rest' },
-      { time: '9:00 – 10:30', start: 1260, end: 1350, label: 'Wind down', detail: 'Lay out Monday: notes, workout clothes, breakfast plan', lane: 'rest' },
-      { time: '10:30', start: 1350, end: 1380, label: 'Lights out — earlier tonight', detail: 'The week starts at 6:30 sharp', lane: 'rest' },
-    ],
-  },
-};
 
 export function istNow(date = new Date()) {
   /* hourCycle h23 avoids the '24:00' some ICU builds emit at midnight. */
@@ -144,15 +32,171 @@ export function istDateISO(date = new Date()) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-export function resolveNow(dayKey, minutes) {
-  const blocks = WEEK[dayKey].blocks;
+export const emptyWeek = () =>
+  Object.fromEntries(DAY_KEYS.map((k) => [k, { title: '', tag: '', note: '', blocks: [] }]));
+
+/* Twelve-hour, no meridiem — the style already on the page ('9:30 – 6:30').
+   A 24-hour clock here would silently restyle every row in the app. */
+export function minutesToLabel(m) {
+  const h = Math.floor(m / 60) % 12;
+  return `${h === 0 ? 12 : h}:${String(m % 60).padStart(2, '0')}`;
+}
+
+/* Derived, never stored. A stored display string is a second source of truth
+   for the same fact, and in the next project that fact comes from a language
+   model — which will eventually emit a time contradicting its own start.
+
+   The typeof guard is not belt-and-braces over validateWeek's matching check
+   below: this function is also reached with weeks that predate that check —
+   whatever is already in someone's localStorage — and its result is handed
+   straight to .split(' – ') by app.js's row and banner renderers. A number
+   there throws a TypeError mid-render. An unusable override falls back to
+   the derived range rather than to '', because a range is what the block
+   actually says; the override was only ever a nicer way to say it. */
+export const formatTime = (b) =>
+  typeof b?.timeText === 'string' && b.timeText
+    ? b.timeText
+    : `${minutesToLabel(b?.start)} – ${minutesToLabel(b?.end)}`;
+
+export function resolveNow(week, dayKey, minutes) {
+  const blocks = week?.[dayKey]?.blocks || [];
   const current = blocks.find((b) => minutes >= b.start && minutes < b.end);
   if (current) return { state: 'now', dayKey, block: current };
 
   const upcoming = blocks.find((b) => b.start > minutes);
   if (upcoming) return { state: 'next', dayKey, block: upcoming };
 
-  /* Past the last block — the useful answer is tomorrow's first, not nothing. */
-  const nextKey = DAY_KEYS[(DAY_KEYS.indexOf(dayKey) + 1) % 7];
-  return { state: 'next', dayKey: nextKey, block: WEEK[nextKey].blocks[0] };
+  /* Walk forward for a day that actually has something in it. A user may
+     plan four days and leave three blank, so looking exactly one day ahead —
+     which is all the old single-week version needed — is not enough. */
+  for (let i = 1; i <= 7; i++) {
+    const key = DAY_KEYS[(DAY_KEYS.indexOf(dayKey) + i) % 7];
+    const first = week?.[key]?.blocks?.[0];
+    if (first) return { state: 'next', dayKey: key, block: first };
+  }
+  return null;                     /* nothing planned anywhere */
+}
+
+/* True for {} and Object.create(null), false for arrays, Dates, RegExps,
+   Maps, functions and the rest of the built-in zoo. A week (and each day
+   inside it) has to be plain data, not merely "typeof === 'object'" — a
+   Date has that too, and is not a sensible week. Everything this module is
+   ever handed comes from JSON, which can produce arrays, primitives and
+   plain objects and nothing else, so this is the exact boundary a legitimate
+   value can never fail. */
+const isPlainObject = (v) =>
+  v !== null && typeof v === 'object' && Object.prototype.toString.call(v) === '[object Object]';
+
+export function validateWeek(week, laneKeys) {
+  /* laneKeys must be an array of lane KEY STRINGS, e.g. ['focus', 'rest'] —
+     not profile.lanes itself. profile.js defines lanes as {key, name}
+     objects, and a Set built from those objects will never match a block's
+     lane string, so every block in an otherwise-valid week would report as
+     an unknown lane. The caller is responsible for mapping:
+     profile.lanes.map((l) => l.key). This function deliberately does not
+     also accept the {key, name} shape — silently tolerating it would hide
+     that caller mistake instead of surfacing it. */
+  const lanes = new Set(Array.isArray(laneKeys) ? laneKeys : []);
+  const errors = [];
+
+  if (!isPlainObject(week)) {
+    errors.push('week must be an object');
+    return { ok: false, errors };
+  }
+
+  for (const key of DAY_KEYS) {
+    const daySlot = week[key];
+    if (daySlot === undefined) continue;                    /* day not supplied */
+    if (!isPlainObject(daySlot)) { errors.push(`${key}: day must be an object`); continue; }
+    const blocks = daySlot.blocks;
+    if (blocks === undefined) continue;                     /* day supplied, no blocks yet */
+    if (!Array.isArray(blocks)) { errors.push(`${key}: blocks is not a list`); continue; }
+    let prevStart = null, prevEnd = -1;
+    blocks.forEach((b, i) => {
+      const at = `${key}[${i}]`;
+      if (!Number.isInteger(b?.start) || !Number.isInteger(b?.end)) errors.push(`${at}: start and end must be whole minutes`);
+      else {
+        if (b.start < 0 || b.end > 1440) errors.push(`${at}: outside the day`);
+        if (b.end <= b.start) errors.push(`${at}: ends before it starts`);
+        if (prevStart !== null && b.start < prevEnd) {
+          /* b.start < prevEnd alone conflates two different problems: a
+             block that truly overlaps the previous one in time, and a block
+             that is merely out of order in the list (5pm then 2pm) but never
+             overlaps it. Only call it an overlap when the intervals actually
+             intersect — this message should not say something that isn't so. */
+          const overlaps = b.end > prevStart;
+          errors.push(`${at}: ${overlaps ? 'overlaps the previous block' : 'is out of order relative to the previous block'}`);
+        }
+        prevStart = b.start;
+        prevEnd = b.end;
+      }
+      if (!String(b?.label || '').trim()) errors.push(`${at}: needs a label`);
+      if (!lanes.has(b?.lane)) errors.push(`${at}: unknown lane "${b?.lane}"`);
+      /* Optional, so undefined passes — but if it is there it is display
+         text, and the renderer splits it on ' – '. A number here used to be
+         declared valid and then throw a TypeError inside the day render,
+         which is the one failure mode this validator exists to prevent. */
+      if (b?.timeText !== undefined && typeof b.timeText !== 'string') {
+        errors.push(`${at}: timeText must be text`);
+      }
+    });
+  }
+  /* Every problem, not the first. Fixing a generated week one error at a
+     time is a guessing game. */
+  return { ok: errors.length === 0, errors };
+}
+
+/* The one gate between a stored document and what actually renders. app.js
+   applied this decision in two places, character for character — once on
+   load and once after the remote merge — which is two chances for them to
+   drift apart and no way to test either.
+
+   The valid case returns doc.value ITSELF, not a copy. app.js's callers
+   compare the result against doc.value by identity to know whether they are
+   looking at the real week or at a fallback, and refuse to overwrite storage
+   when it is a fallback. A defensive copy here would make every load look
+   like a fallback and silently disable saving. */
+export function weekFromDoc(doc, laneKeys) {
+  return doc?.value && validateWeek(doc.value, laneKeys).ok ? doc.value : emptyWeek();
+}
+
+/* The whole gate decision, not just the week: what to render, AND whether
+   what we ended up rendering is the stored value itself. app.js needs both
+   halves at every gate site — the cold load, the remote merge, and again
+   whenever the lane set changes underneath a week that was already gated —
+   and re-deriving the second half by hand at each site is exactly how the
+   two original copies of this decision drifted apart.
+
+   Identity, not deep equality, is the entire test; see weekFromDoc above on
+   why the valid case must hand back doc.value rather than a copy.
+
+   isFallback is deliberately false for a document that does not exist at
+   all. "Empty because this account is new" and "empty because your stored
+   week could not be read" are different states, and only the second may
+   block a save — a brand-new account must be able to write its first week. */
+export function gateWeek(doc, laneKeys) {
+  const week = weekFromDoc(doc, laneKeys);
+  return { week, isFallback: !!doc?.value && week !== doc.value };
+}
+
+/* Which of the stylesheet's five rotation colours a lane gets, by its
+   position in the user's own profile.lanes — the key spelling never decides.
+   Returns a var() reference for an inline --lane-i, so styles.css needs no
+   per-key selector.
+
+   The modulo is load-bearing. profileEditor.js sets no upper bound on lane
+   count and styles.css defines --lane-pos-1..5 only, so a sixth lane emitted
+   --lane-pos-6: not an undefined property but an INVALID substitution, which
+   means background: var(--lane-i, var(--lane-pos-5)) does NOT fall back and
+   the dot renders with no colour. The legend already wraps modulo 5
+   (.legend span:nth-child(5n+k)), so anything else here also puts the row
+   and the legend on different colours for the same lane — and
+   position-is-the-colour is the entire contract of the scheme.
+
+   A lane the profile does not define keeps the last rotation slot rather
+   than throwing: the same tolerance validateWeek's "unknown lane" error
+   exists to flag well before rendering ever sees it. */
+export function laneVarFor(lanes, laneKey) {
+  const idx = Array.isArray(lanes) ? lanes.findIndex((l) => l?.key === laneKey) : -1;
+  return idx === -1 ? 'var(--lane-pos-5)' : `var(--lane-pos-${(idx % 5) + 1})`;
 }

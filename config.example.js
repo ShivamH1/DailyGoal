@@ -2,4 +2,3 @@
    tools/make-config.mjs and is gitignored. */
 export const SUPABASE_URL = 'https://<project-ref>.supabase.co';
 export const SUPABASE_ANON_KEY = '<the anon / publishable key — never the service_role key>';
-export const USER_ID = '<uuid, matching the RLS policy in supabase/schema.sql>';

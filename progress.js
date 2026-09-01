@@ -99,11 +99,19 @@ const csvField = (v) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
-export function toCSV(progress) {
-  const head = 'date,study,workout,sleep,note,updated_at';
+/* extras is profile.ticks filtered to the non-core ones — the caller's
+   ordering is kept as-is, so the columns land in the same order the ticks
+   editor shows them in. Each column sits between sleep and note, never
+   appended at the end and never ahead of the core three: an export with no
+   extras must stay byte-identical to the format that shipped before extras
+   existed, so anyone with an old file (or a spreadsheet built on one) keeps
+   their columns where they were. */
+export function toCSV(progress, extras = []) {
+  const head = ['date,study,workout,sleep', ...extras.map((t) => csvField(t.label)), 'note,updated_at'].join(',');
   const rows = Object.keys(progress).sort().map((date) => {
     const r = progress[date] || {};
-    return [date, r.s ? 1 : 0, r.w ? 1 : 0, r.z ? 1 : 0, csvField(r.note), csvField(r.u)].join(',');
+    const extraCells = extras.map((t) => (r.x?.[t.key] ? 1 : 0));
+    return [date, r.s ? 1 : 0, r.w ? 1 : 0, r.z ? 1 : 0, ...extraCells, csvField(r.note), csvField(r.u)].join(',');
   });
   return [head, ...rows].join('\n') + '\n';
 }

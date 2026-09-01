@@ -84,3 +84,10 @@ test('both accepted spellings are declared, dashboard name first', () => {
   assert.deepEqual(URL_KEYS, ['PROJECT_URL', 'SUPABASE_URL']);
   assert.deepEqual(KEY_KEYS, ['PUBLIC_KEY', 'SUPABASE_ANON_KEY']);
 });
+
+test('the generator no longer emits USER_ID', async () => {
+  /* Rows are keyed to auth.uid() now. A generated USER_ID would be a value
+     nothing reads, which is how stale configuration outlives its meaning. */
+  const src = await import('node:fs').then((fs) => fs.readFileSync('tools/make-config.mjs', 'utf8'));
+  assert.doesNotMatch(src, /export const USER_ID/);
+});
